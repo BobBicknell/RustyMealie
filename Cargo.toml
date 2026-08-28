@@ -1,0 +1,21 @@
+# VIRTUAL MANIFEST WORKSPACE
+#
+# This file defines the workspace and the shared `[workspace.package]`
+# metadata that member crates inherit from. Keep one source of truth for
+# things like the app version here and let `src-tauri/Cargo.toml` inherit
+# it (see `version.workspace`, `edition.workspace`, etc. in that file).
+#
+# Run cargo commands from this directory (or any member); Cargo resolves
+# the workspace automatically.
+
+[workspace]
+members = ["src-tauri"]
+resolver = "2"
+
+[workspace.package]
+name = "rustymealie"
+version = "0.1.0"
+description = "RustyMealie — offline-first Mealie client"
+authors = ["Robert Bicknell"]
+edition = "2021"
+rust-version = "1.77"

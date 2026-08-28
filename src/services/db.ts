@@ -1,0 +1,200 @@
+import { invoke } from '@tauri-apps/api/core';
+import { LazyStore } from '@tauri-apps/plugin-store';
+
+export interface RecipeSummary {
+    id: string;
+    slug: string | null;
+    name: string;
+    description: string | null;
+    image_path: string | null;
+    tags: string[];
+    categories: string[];
+    marked_offline: boolean;
+}
+
+export interface SyncReport {
+    total_recipes: number;
+    details_synced: number;
+    images_downloaded: number;
+    errors: number;
+    finished_at: number;
+}
+
+export interface SyncStatus {
+    last_sync_at: number | null;
+    last_sync_count: number | null;
+    server_url: string | null;
+}
+
+export interface SyncSettings {
+    base_url: string;
+    token: string;
+}
+
+export interface ShoppingListItem {
+    id: string;
+    display: string;
+    note: string | null;
+    checked: boolean;
+    position: number;
+}
+
+export interface ShoppingList {
+    id: string;
+    name: string;
+    items: ShoppingListItem[];
+}
+
+export interface ShoppingListsSyncReport {
+    lists: number;
+    items: number;
+    errors: number;
+}
+
+const settingsStore = new LazyStore('settings.json');
+
+export const settingsService = {
+    async loadSettings(): Promise<SyncSettings> {
+        const base_url = (await settingsStore.get<string>('base_url')) ?? '';
+        const token = (await settingsStore.get<string>('token')) ?? '';
+        return { base_url, token };
+    },
+
+    async saveSettings(settings: SyncSettings): Promise<void> {
+        await settingsStore.set('base_url', settings.base_url);
+        await settingsStore.set('token', settings.token);
+        await settingsStore.save();
+    },
+};
+
+export const dbService = {
+    async getRecipes(query?: string, category?: string, tag?: string): Promise<RecipeSummary[]> {
+        try {
+            return await invoke<RecipeSummary[]>('get_recipes', {
+                query: query || null,
+                category: category || null,
+                tag: tag || null,
+            });
+        } catch (error) {
+            console.error('Failed to fetch recipes from local database:', error);
+            throw error;
+        }
+    },
+
+    async getRecipeDetail(id: string): Promise<any | null> {
+        try {
+            const rawJson = await invoke<string | null>('get_recipe_detail', { id });
+            return rawJson ? JSON.parse(rawJson) : null;
+        } catch (error) {
+            console.error(`Failed to fetch recipe detail for ID ${id}:`, error);
+            throw error;
+        }
+    },
+
+    async fetchRecipeDetail(
+        baseUrl: string,
+        token: string,
+        id: string,
+        slug: string
+    ): Promise<any> {
+        try {
+            const rawJson = await invoke<string>('fetch_recipe_detail', { baseUrl, token, id, slug });
+            return JSON.parse(rawJson);
+        } catch (error) {
+            console.error(`Failed to fetch recipe detail for ID ${id} from server:`, error);
+            throw error;
+        }
+    },
+
+    async toggleOfflineRecipe(id: string, offline: boolean): Promise<void> {
+        try {
+            await invoke('toggle_offline_recipe', { id, offline });
+        } catch (error) {
+            console.error(`Failed to toggle offline state for ID ${id}:`, error);
+            throw error;
+        }
+    },
+
+    async triggerSync(baseUrl: string, token: string): Promise<SyncReport> {
+        return await invoke<SyncReport>('trigger_sync', { baseUrl, token });
+    },
+
+    async getSyncStatus(): Promise<SyncStatus> {
+        return await invoke<SyncStatus>('get_sync_status');
+    },
+
+    async getShoppingLists(): Promise<ShoppingList[]> {
+        try {
+            return await invoke<ShoppingList[]>('get_shopping_lists');
+        } catch (error) {
+            console.error('Failed to fetch shopping lists from local database:', error);
+            throw error;
+        }
+    },
+
+    async refreshShoppingLists(baseUrl: string, token: string): Promise<ShoppingListsSyncReport> {
+        return await invoke<ShoppingListsSyncReport>('refresh_shopping_lists', {
+            baseUrl,
+            token,
+        });
+    },
+
+    async toggleShoppingItem(
+        baseUrl: string,
+        token: string,
+        listId: string,
+        itemId: string,
+        checked: boolean
+    ): Promise<ShoppingList> {
+        try {
+            return await invoke<ShoppingList>('toggle_shopping_item', {
+                baseUrl,
+                token,
+                listId,
+                itemId,
+                checked,
+            });
+        } catch (error) {
+            console.error(`Failed to toggle shopping item ${itemId}:`, error);
+            throw error;
+        }
+    },
+
+    async addShoppingListItem(
+        baseUrl: string,
+        token: string,
+        listId: string,
+        note: string
+    ): Promise<ShoppingList> {
+        try {
+            return await invoke<ShoppingList>('add_shopping_list_item', {
+                baseUrl,
+                token,
+                listId,
+                note,
+            });
+        } catch (error) {
+            console.error(`Failed to add shopping item to ${listId}:`, error);
+            throw error;
+        }
+    },
+
+    async addRecipeToShoppingList(
+        baseUrl: string,
+        token: string,
+        listId: string,
+        recipeId: string
+    ): Promise<ShoppingList> {
+        try {
+            return await invoke<ShoppingList>('add_recipe_to_shopping_list', {
+                baseUrl,
+                token,
+                listId,
+                recipeId,
+            });
+        } catch (error) {
+            console.error(`Failed to add recipe ${recipeId} to list ${listId}:`, error);
+            throw error;
+        }
+    },
+};

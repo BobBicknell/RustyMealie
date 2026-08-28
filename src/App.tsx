@@ -1,10 +1,52 @@
+import { useState } from "react";
+import { RecipeListScreen } from "./screens/RecipeListScreen";
+import { RecipeDetailScreen } from "./screens/RecipeDetailScreen";
+import { SyncSettingsScreen } from "./screens/SyncSettingsScreen";
+import { ShoppingListScreen } from "./screens/ShoppingListScreen";
+import { RecipeSummary } from "./services/db";
+
+type Tab = "recipes" | "shopping" | "settings";
+
+const tabs: { id: Tab; label: string; icon: string }[] = [
+  { id: "recipes", label: "Recipes", icon: "📖" },
+  { id: "shopping", label: "Shopping", icon: "🛒" },
+  { id: "settings", label: "Settings", icon: "⚙️" },
+];
+
 function App() {
+  const [activeTab, setActiveTab] = useState<Tab>("recipes");
+  const [openRecipe, setOpenRecipe] = useState<RecipeSummary | null>(null);
+
   return (
-    <div className="min-h-full flex items-center justify-center bg-gray-50 text-gray-900">
-      <div className="text-center">
-        <h1 className="text-3xl font-bold">RustyMeals</h1>
-        <p className="mt-2 text-gray-500">Offline-first Mealie client — scaffold ready.</p>
-      </div>
+    <div className="min-h-screen flex flex-col bg-gray-50 text-gray-900">
+      <main className="flex-1 overflow-y-auto pb-16">
+        {openRecipe ? (
+          <RecipeDetailScreen recipe={openRecipe} onBack={() => setOpenRecipe(null)} />
+        ) : activeTab === "recipes" ? (
+          <RecipeListScreen onOpenRecipe={setOpenRecipe} />
+        ) : activeTab === "shopping" ? (
+          <ShoppingListScreen />
+        ) : (
+          <SyncSettingsScreen />
+        )}
+      </main>
+
+      {!openRecipe && (
+        <nav className="fixed bottom-0 inset-x-0 flex border-t border-gray-200 bg-white">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 py-2.5 text-xs font-medium transition-colors ${
+                activeTab === tab.id ? "text-blue-600" : "text-gray-400"
+              }`}
+            >
+              <span className="block text-lg leading-none mb-0.5">{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      )}
     </div>
   );
 }
