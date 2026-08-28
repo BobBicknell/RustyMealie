@@ -1,6 +1,6 @@
+use rusqlite::Connection;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use rusqlite::Connection;
 
 /// The central state managed by Tauri and accessed by frontend commands.
 pub struct AppState {

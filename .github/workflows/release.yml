@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      allow: ${{ steps.check.outputs.allow }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version
+        id: check
+        run: |
+          VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          echo "version=${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          if printf '%s' "$VERSION" | grep -q 'test'; then
+            echo "allow=false"
+            echo "allow=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "allow=true"
+            echo "allow=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: gate
+    if: needs.gate.outputs.allow == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build app bundle
+        run: npm run tauri build
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.gate.outputs.version }}
+          name: v${{ needs.gate.outputs.version }}
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          skip_if_release_exists: true
+          files: |
+            target/release/bundle/deb/*.deb
+            target/release/bundle/appimage/*.AppImage

@@ -1,6 +1,6 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Debug, Deserialize)]
 pub struct MealieTag {
@@ -91,9 +91,7 @@ impl MealieClient {
         }
     }
 
-    pub async fn fetch_all_recipe_summaries(
-        &self,
-    ) -> Result<Vec<MealieRecipeSummary>, String> {
+    pub async fn fetch_all_recipe_summaries(&self) -> Result<Vec<MealieRecipeSummary>, String> {
         let mut all = Vec::new();
         let mut page: i64 = 1;
 
@@ -102,7 +100,10 @@ impl MealieClient {
             let response = self
                 .client
                 .get(&url)
-                .query(&[("page", page.to_string()), ("perPage", PAGE_SIZE.to_string())])
+                .query(&[
+                    ("page", page.to_string()),
+                    ("perPage", PAGE_SIZE.to_string()),
+                ])
                 .bearer_auth(&self.token)
                 .send()
                 .await
@@ -154,7 +155,11 @@ impl MealieClient {
             .map_err(|e| format!("Failed to parse recipe detail data: {}", e))
     }
 
-    pub async fn download_image(&self, recipe_id: &str, file_name: &str) -> Result<Vec<u8>, String> {
+    pub async fn download_image(
+        &self,
+        recipe_id: &str,
+        file_name: &str,
+    ) -> Result<Vec<u8>, String> {
         let url = format!(
             "{}/api/media/recipes/{}/images/{}",
             self.base_url, recipe_id, file_name
@@ -204,9 +209,7 @@ impl MealieClient {
 
     /// Fetch every shopping list the household has access to, paging
     /// through the collection like the recipe list does.
-    pub async fn fetch_shopping_lists(
-        &self,
-    ) -> Result<Vec<MealieShoppingListSummary>, String> {
+    pub async fn fetch_shopping_lists(&self) -> Result<Vec<MealieShoppingListSummary>, String> {
         let mut all = Vec::new();
         let mut page: i64 = 1;
 
@@ -246,10 +249,7 @@ impl MealieClient {
     }
 
     /// Fetch one shopping list with its items.
-    pub async fn fetch_shopping_list(
-        &self,
-        list_id: &str,
-    ) -> Result<MealieShoppingList, String> {
+    pub async fn fetch_shopping_list(&self, list_id: &str) -> Result<MealieShoppingList, String> {
         let url = format!(
             "{}/api/households/shopping/lists/{}",
             self.base_url, list_id
@@ -346,7 +346,10 @@ impl MealieClient {
         item_id: &str,
         checked: bool,
     ) -> Result<MealieShoppingListItem, String> {
-        let url = format!("{}/api/households/shopping/items/{}", self.base_url, item_id);
+        let url = format!(
+            "{}/api/households/shopping/items/{}",
+            self.base_url, item_id
+        );
 
         let current = self
             .client
@@ -463,7 +466,10 @@ mod tests {
         assert_eq!(page.items.len(), 2);
 
         let first = &page.items[0];
-        assert_eq!(first.id.as_deref(), Some("b6e7d3a5-1111-2222-3333-444455556666"));
+        assert_eq!(
+            first.id.as_deref(),
+            Some("b6e7d3a5-1111-2222-3333-444455556666")
+        );
         assert_eq!(first.slug.as_deref(), Some("pasta-carbonara"));
         assert_eq!(first.image.as_deref(), Some("original.webp"));
         assert_eq!(first.tag_names(), vec!["italian".to_string()]);

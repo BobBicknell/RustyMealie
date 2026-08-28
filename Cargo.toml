@@ -13,9 +13,8 @@ members = ["src-tauri"]
 resolver = "2"
 
 [workspace.package]
-name = "rustymealie"
-version = "0.1.0"
+version = "0.2.0-test.1"
 description = "RustyMealie — offline-first Mealie client"
 authors = ["Robert Bicknell"]
-edition = "2021"
-rust-version = "1.77"
+edition = "2024"
+rust-version = "1.85"

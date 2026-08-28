@@ -5,7 +5,7 @@
 //! `shopping_lists`, and `sync_meta`. Callers go through `AppState`
 //! (see `state.rs`) rather than opening connections directly.
 
-use rusqlite::{params, Connection, OptionalExtension, Result as SqlResult};
+use rusqlite::{Connection, OptionalExtension, Result as SqlResult, params};
 use serde::{Deserialize, Serialize};
 
 /// A lightweight summary of a recipe, used for list/search views.
@@ -101,6 +101,7 @@ fn add_column_if_missing(
 /// `marked_offline` — that flag is only changed via `set_offline_available`,
 /// so a routine metadata sync never silently un-marks a recipe the user
 /// flagged for offline use.
+#[allow(clippy::too_many_arguments)]
 pub fn upsert_recipe_summary(
     conn: &Connection,
     id: &str,
@@ -172,7 +173,9 @@ pub fn get_recipe_summaries(
     category: Option<&str>,
     tag: Option<&str>,
 ) -> SqlResult<Vec<RecipeSummary>> {
-    let mut sql = String::from("SELECT id, slug, name, description, image_path, tags, categories, marked_offline FROM recipes");
+    let mut sql = String::from(
+        "SELECT id, slug, name, description, image_path, tags, categories, marked_offline FROM recipes",
+    );
     let mut clauses: Vec<String> = Vec::new();
     let mut values: Vec<String> = Vec::new();
 
@@ -235,7 +238,7 @@ pub fn get_recipe_raw_json(conn: &Connection, id: &str) -> SqlResult<Option<Stri
         params![id],
         |row| row.get(0),
     )
-        .optional()
+    .optional()
 }
 
 /// Mark (or unmark) a recipe as available offline, and optionally
@@ -313,9 +316,8 @@ pub struct OfflineRecipeRef {
 /// Recipes currently flagged offline — the sync engine re-pulls each one's
 /// full body + thumbnail.
 pub fn get_offline_recipe_refs(conn: &Connection) -> SqlResult<Vec<OfflineRecipeRef>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, slug, remote_image FROM recipes WHERE marked_offline = 1",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT id, slug, remote_image FROM recipes WHERE marked_offline = 1")?;
     let rows = stmt
         .query_map([], |row| {
             Ok(OfflineRecipeRef {
@@ -329,7 +331,13 @@ pub fn get_offline_recipe_refs(conn: &Connection) -> SqlResult<Vec<OfflineRecipe
 }
 
 /// Upsert a shopping list's raw payload.
-pub fn upsert_shopping_list(conn: &Connection, id: &str, name: &str, raw_json: &str, synced_at: i64) -> SqlResult<()> {
+pub fn upsert_shopping_list(
+    conn: &Connection,
+    id: &str,
+    name: &str,
+    raw_json: &str,
+    synced_at: i64,
+) -> SqlResult<()> {
     conn.execute(
         r#"
         INSERT INTO shopping_lists (id, name, raw_json, last_synced_at)
@@ -376,8 +384,12 @@ pub fn delete_shopping_lists_except(conn: &Connection, keep_ids: &[String]) -> S
 
 /// Get/set a single `sync_meta` key (e.g. `last_full_sync_at`).
 pub fn get_sync_meta(conn: &Connection, key: &str) -> SqlResult<Option<String>> {
-    conn.query_row("SELECT value FROM sync_meta WHERE key = ?1", params![key], |row| row.get(0))
-        .optional()
+    conn.query_row(
+        "SELECT value FROM sync_meta WHERE key = ?1",
+        params![key],
+        |row| row.get(0),
+    )
+    .optional()
 }
 
 pub fn set_sync_meta(conn: &Connection, key: &str, value: &str) -> SqlResult<()> {
@@ -470,7 +482,7 @@ mod tests {
             &["main".to_string()],
             1000,
         )
-            .unwrap();
+        .unwrap();
 
         let all = get_recipe_summaries(&conn, None, None, None).unwrap();
         assert_eq!(all.len(), 1);
@@ -489,9 +501,45 @@ mod tests {
     #[test]
     fn search_filters_by_name_and_tags_and_categories() {
         let conn = test_conn();
-        upsert_recipe_summary(&conn, "r1", "Pasta Carbonara", Some("pasta-carbonara"), None, None, "{}", &["italian".into()], &["main".into()], 1000).unwrap();
-        upsert_recipe_summary(&conn, "r2", "Chicken Curry", Some("chicken-curry"), None, None, "{}", &["indian".into()], &["main".into()], 1000).unwrap();
-        upsert_recipe_summary(&conn, "r3", "Caesar Salad", Some("caesar-salad"), None, None, "{}", &[], &["side".into()], 1000).unwrap();
+        upsert_recipe_summary(
+            &conn,
+            "r1",
+            "Pasta Carbonara",
+            Some("pasta-carbonara"),
+            None,
+            None,
+            "{}",
+            &["italian".into()],
+            &["main".into()],
+            1000,
+        )
+        .unwrap();
+        upsert_recipe_summary(
+            &conn,
+            "r2",
+            "Chicken Curry",
+            Some("chicken-curry"),
+            None,
+            None,
+            "{}",
+            &["indian".into()],
+            &["main".into()],
+            1000,
+        )
+        .unwrap();
+        upsert_recipe_summary(
+            &conn,
+            "r3",
+            "Caesar Salad",
+            Some("caesar-salad"),
+            None,
+            None,
+            "{}",
+            &[],
+            &["side".into()],
+            1000,
+        )
+        .unwrap();
 
         let by_name = get_recipe_summaries(&conn, Some("pasta"), None, None).unwrap();
         assert_eq!(by_name.len(), 1);
@@ -515,7 +563,19 @@ mod tests {
     #[test]
     fn set_offline_available_toggles_flag_without_metadata_sync_undoing_it() {
         let conn = test_conn();
-        upsert_recipe_summary(&conn, "r1", "Pasta Carbonara", Some("pasta-carbonara"), None, None, "{}", &[], &[], 1000).unwrap();
+        upsert_recipe_summary(
+            &conn,
+            "r1",
+            "Pasta Carbonara",
+            Some("pasta-carbonara"),
+            None,
+            None,
+            "{}",
+            &[],
+            &[],
+            1000,
+        )
+        .unwrap();
 
         set_offline_available(&conn, "r1", true, Some("/images/r1.jpg")).unwrap();
         let all = get_recipe_summaries(&conn, None, None, None).unwrap();
@@ -523,16 +583,55 @@ mod tests {
         assert_eq!(all[0].image_path.as_deref(), Some("/images/r1.jpg"));
 
         // A routine metadata re-sync (no image_path) must not clear the flag.
-        upsert_recipe_summary(&conn, "r1", "Pasta Carbonara", Some("pasta-carbonara"), None, None, "{}", &[], &[], 2000).unwrap();
+        upsert_recipe_summary(
+            &conn,
+            "r1",
+            "Pasta Carbonara",
+            Some("pasta-carbonara"),
+            None,
+            None,
+            "{}",
+            &[],
+            &[],
+            2000,
+        )
+        .unwrap();
         let all = get_recipe_summaries(&conn, None, None, None).unwrap();
-        assert!(all[0].marked_offline, "metadata sync must not unset marked_offline");
+        assert!(
+            all[0].marked_offline,
+            "metadata sync must not unset marked_offline"
+        );
     }
 
     #[test]
     fn offline_recipe_refs_returns_only_flagged_recipes() {
         let conn = test_conn();
-        upsert_recipe_summary(&conn, "r1", "A", Some("a"), None, Some("original.webp"), "{}", &[], &[], 1000).unwrap();
-        upsert_recipe_summary(&conn, "r2", "B", Some("b"), None, None, "{}", &[], &[], 1000).unwrap();
+        upsert_recipe_summary(
+            &conn,
+            "r1",
+            "A",
+            Some("a"),
+            None,
+            Some("original.webp"),
+            "{}",
+            &[],
+            &[],
+            1000,
+        )
+        .unwrap();
+        upsert_recipe_summary(
+            &conn,
+            "r2",
+            "B",
+            Some("b"),
+            None,
+            None,
+            "{}",
+            &[],
+            &[],
+            1000,
+        )
+        .unwrap();
         set_offline_available(&conn, "r2", true, None).unwrap();
 
         let refs = get_offline_recipe_refs(&conn).unwrap();
@@ -549,7 +648,19 @@ mod tests {
     #[test]
     fn update_recipe_payload_replaces_placeholder_and_keeps_flag() {
         let conn = test_conn();
-        upsert_recipe_summary(&conn, "r1", "A", Some("a"), None, Some("original.webp"), "{}", &[], &[], 1000).unwrap();
+        upsert_recipe_summary(
+            &conn,
+            "r1",
+            "A",
+            Some("a"),
+            None,
+            Some("original.webp"),
+            "{}",
+            &[],
+            &[],
+            1000,
+        )
+        .unwrap();
         set_offline_available(&conn, "r1", true, None).unwrap();
 
         update_recipe_payload(
@@ -571,8 +682,32 @@ mod tests {
     #[test]
     fn recipes_needing_image_returns_only_missing_thumbnails() {
         let conn = test_conn();
-        upsert_recipe_summary(&conn, "r1", "A", Some("a"), None, Some("original.webp"), "{}", &[], &[], 1000).unwrap();
-        upsert_recipe_summary(&conn, "r2", "B", Some("b"), None, Some("original.webp"), "{}", &[], &[], 1000).unwrap();
+        upsert_recipe_summary(
+            &conn,
+            "r1",
+            "A",
+            Some("a"),
+            None,
+            Some("original.webp"),
+            "{}",
+            &[],
+            &[],
+            1000,
+        )
+        .unwrap();
+        upsert_recipe_summary(
+            &conn,
+            "r2",
+            "B",
+            Some("b"),
+            None,
+            Some("original.webp"),
+            "{}",
+            &[],
+            &[],
+            1000,
+        )
+        .unwrap();
         set_recipe_image(&conn, "r2", "/images/r2.webp").unwrap();
 
         let needing = get_recipes_needing_image(&conn).unwrap();
@@ -597,9 +732,15 @@ mod tests {
         let conn = test_conn();
         assert_eq!(get_sync_meta(&conn, "last_sync").unwrap(), None);
         set_sync_meta(&conn, "last_sync", "12345").unwrap();
-        assert_eq!(get_sync_meta(&conn, "last_sync").unwrap(), Some("12345".to_string()));
+        assert_eq!(
+            get_sync_meta(&conn, "last_sync").unwrap(),
+            Some("12345".to_string())
+        );
         set_sync_meta(&conn, "last_sync", "67890").unwrap();
-        assert_eq!(get_sync_meta(&conn, "last_sync").unwrap(), Some("67890".to_string()));
+        assert_eq!(
+            get_sync_meta(&conn, "last_sync").unwrap(),
+            Some("67890".to_string())
+        );
     }
 
     #[test]

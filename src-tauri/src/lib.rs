@@ -1,7 +1,7 @@
 // RustyMeals Tauri core — library entry point.
+pub mod api;
 pub mod db;
 pub mod state;
-pub mod api;
 
 use state::AppState;
 use tauri::Manager;
@@ -9,10 +9,10 @@ use tauri::Manager;
 /// Grouping commands inside a module breaks the macro expansion collision.
 pub mod commands {
     use super::AppState;
-    use crate::db::{self, ImageToFetch, OfflineRecipeRef, RecipeSummary};
     use crate::api::MealieClient;
+    use crate::db::{self, ImageToFetch, OfflineRecipeRef, RecipeSummary};
     use serde::Serialize;
-    use std::path::PathBuf;
+    use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unix_now() -> i64 {
@@ -83,7 +83,7 @@ pub mod commands {
     }
 
     fn write_image_file(
-        images_dir: &PathBuf,
+        images_dir: &Path,
         recipe_id: &str,
         file_name: &str,
         bytes: &[u8],
@@ -140,8 +140,7 @@ pub mod commands {
 
         let mut images_downloaded = 0usize;
         for ImageToFetch { id, .. } in images_to_fetch {
-            let Ok(bytes) = client.download_recipe_image(&id, "min-original.webp").await
-            else {
+            let Ok(bytes) = client.download_recipe_image(&id, "min-original.webp").await else {
                 continue;
             };
             let Ok(path) = write_image_file(&state.images_dir, &id, "min-original.webp", &bytes)
@@ -184,21 +183,16 @@ pub mod commands {
             // if it is still missing.
             let needs_image = {
                 let conn = state.db.lock().map_err(|e| e.to_string())?;
-                matches!(
-                    db::get_recipe_image_path(&conn, &id).map_err(|e| e.to_string())?,
-                    None
-                )
+                db::get_recipe_image_path(&conn, &id)
+                    .map_err(|e| e.to_string())?
+                    .is_none()
             };
 
             let local_image_path = if needs_image {
                 match client.download_recipe_image(&id, "min-original.webp").await {
-                    Ok(bytes) => write_image_file(
-                        &state.images_dir,
-                        &id,
-                        "min-original.webp",
-                        &bytes,
-                    )
-                    .ok(),
+                    Ok(bytes) => {
+                        write_image_file(&state.images_dir, &id, "min-original.webp", &bytes).ok()
+                    }
                     Err(_) => None,
                 }
             } else {
@@ -207,7 +201,15 @@ pub mod commands {
 
             let raw_json = detail.to_string();
             let conn = state.db.lock().map_err(|e| e.to_string())?;
-            if db::update_recipe_payload(&conn, &id, &raw_json, local_image_path.as_deref(), timestamp).is_ok() {
+            if db::update_recipe_payload(
+                &conn,
+                &id,
+                &raw_json,
+                local_image_path.as_deref(),
+                timestamp,
+            )
+            .is_ok()
+            {
                 details_synced += 1;
             } else {
                 errors += 1;
@@ -240,13 +242,10 @@ pub mod commands {
     }
 
     #[tauri::command]
-    pub async fn get_sync_status(
-        state: tauri::State<'_, AppState>,
-    ) -> Result<SyncStatus, String> {
+    pub async fn get_sync_status(state: tauri::State<'_, AppState>) -> Result<SyncStatus, String> {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         let meta = |key: &str| db::get_sync_meta(&conn, key).map_err(|e| e.to_string());
-        let as_i64 =
-            |value: Option<String>| value.and_then(|raw| raw.parse::<i64>().ok());
+        let as_i64 = |value: Option<String>| value.and_then(|raw| raw.parse::<i64>().ok());
 
         Ok(SyncStatus {
             last_sync_at: as_i64(meta("last_sync_at")?),
@@ -276,12 +275,13 @@ pub mod commands {
     /// Build a UI-facing shopping list from a cached raw payload without
     /// letting a malformed row take the whole screen down.
     fn parse_local_shopping_list(id: &str, name: &str, raw_json: &str) -> ShoppingList {
-        let detail = serde_json::from_str::<crate::api::MealieShoppingList>(raw_json)
-            .unwrap_or(crate::api::MealieShoppingList {
+        let detail = serde_json::from_str::<crate::api::MealieShoppingList>(raw_json).unwrap_or(
+            crate::api::MealieShoppingList {
                 id: Some(id.to_string()),
                 name: Some(name.to_string()),
                 list_items: Vec::new(),
-            });
+            },
+        );
 
         let mut items: Vec<ShoppingListItem> = detail
             .list_items
@@ -296,7 +296,11 @@ pub mod commands {
                 })
             })
             .collect();
-        items.sort_by(|a, b| a.position.cmp(&b.position).then_with(|| a.display.cmp(&b.display)));
+        items.sort_by(|a, b| {
+            a.position
+                .cmp(&b.position)
+                .then_with(|| a.display.cmp(&b.display))
+        });
         ShoppingList {
             id: id.to_string(),
             name: name.to_string(),
@@ -445,7 +449,9 @@ pub mod commands {
         recipe_id: String,
     ) -> Result<ShoppingList, String> {
         let client = MealieClient::new(base_url, token);
-        let detail = client.add_recipe_to_shopping_list(&list_id, &recipe_id).await?;
+        let detail = client
+            .add_recipe_to_shopping_list(&list_id, &recipe_id)
+            .await?;
 
         let name = detail
             .name
@@ -467,7 +473,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
-            let app_dir = app.path().app_data_dir().expect("Failed to resolve app data dir");
+            let app_dir = app
+                .path()
+                .app_data_dir()
+                .expect("Failed to resolve app data dir");
             std::fs::create_dir_all(&app_dir).expect("Failed to create app data dir");
             let images_dir = app_dir.join("images");
             std::fs::create_dir_all(&images_dir).expect("Failed to create image cache dir");
