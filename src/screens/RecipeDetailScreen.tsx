@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { dbService, RecipeSummary, settingsService, ShoppingList } from "../services/db";
@@ -144,6 +144,23 @@ export function RecipeDetailScreen({
     },
   });
 
+  // When the list picker opens with nothing cached, pull the shopping lists
+  // from the server so the user actually has a list to pick from. `ensuredRef`
+  // resets on each open so we fetch at most once per picker-open (even if the
+  // server returns no lists).
+  const ensuredRef = useRef(false);
+  useEffect(() => {
+    if (choosingList) {
+      const lists = listsQuery.data;
+      if ((!lists || lists.length === 0) && !ensuredRef.current && !ensureLists.isPending) {
+        ensuredRef.current = true;
+        ensureLists.mutate();
+      }
+    } else {
+      ensuredRef.current = false;
+    }
+  }, [choosingList, listsQuery.data, ensureLists]);
+
   const detail: RecipeData | null = isPlaceholder(localQuery.data)
     ? null
     : (localQuery.data ?? null);
@@ -276,47 +293,67 @@ export function RecipeDetailScreen({
                 )}
 
                 {choosingList && (
-                  <div className="mt-2 bg-white rounded-lg border border-gray-100 p-2 space-y-1.5">
-                    {listsQuery.isPending && (
-                      <p className="text-xs text-gray-400 px-2 py-1">Loading lists…</p>
-                    )}
-                    {(listsQuery.data ?? []).length === 0 &&
-                      !ensureLists.isPending &&
-                      !listsQuery.isPending && (
-                        <div className="px-2 py-1 space-y-2">
-                          <p className="text-xs text-gray-500">
-                            No shopping lists cached.
-                          </p>
-                          <button
-                            onClick={() => ensureLists.mutate()}
-                            disabled={ensureLists.isPending}
-                            className="text-xs text-blue-600 font-medium disabled:opacity-50"
-                          >
-                            {ensureLists.isPending ? "Loading…" : "Fetch lists from server"}
-                          </button>
-                        </div>
+                  <div
+                    className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
+                    onClick={() => setChoosingList(false)}
+                  >
+                    <div
+                      className="w-full max-w-lg bg-white rounded-t-2xl p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] shadow-xl"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-gray-900">Add to list</h3>
+                        <button
+                          onClick={() => setChoosingList(false)}
+                          className="text-sm text-gray-400 px-2 py-1"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      {listsQuery.isPending && (
+                        <p className="text-sm text-gray-400 py-4 text-center">Loading lists…</p>
                       )}
-                    {ensureLists.isError && (
-                      <p className="text-xs text-red-600 px-2 py-1 break-words">
-                        {String(ensureLists.error)}
-                      </p>
-                    )}
-                    {(listsQuery.data ?? []).map((list) => (
-                      <button
-                        key={list.id}
-                        onClick={() => {
-                          setChoosingList(false);
-                          addToShopping.mutate(list.id);
-                        }}
-                        disabled={addToShopping.isPending}
-                        className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-gray-50 disabled:opacity-50"
-                      >
-                        {list.name}{" "}
-                        <span className="text-gray-400 text-xs">
-                          ({list.items.length} item{list.items.length === 1 ? "" : "s"})
-                        </span>
-                      </button>
-                    ))}
+                      {(listsQuery.data ?? []).length === 0 &&
+                        !ensureLists.isPending &&
+                        !listsQuery.isPending && (
+                          <p className="text-sm text-gray-500 py-4 text-center space-y-2">
+                            <span className="block">No shopping lists cached.</span>
+                            <button
+                              onClick={() => ensureLists.mutate()}
+                              disabled={ensureLists.isPending}
+                              className="text-xs text-blue-600 font-medium disabled:opacity-50"
+                            >
+                              {ensureLists.isPending ? "Loading…" : "Fetch lists from server"}
+                            </button>
+                          </p>
+                        )}
+                      {ensureLists.isError && (
+                        <p className="text-xs text-red-600 px-2 py-1 break-words">
+                          {String(ensureLists.error)}
+                        </p>
+                      )}
+                      <div className="space-y-1.5">
+                        {(listsQuery.data ?? []).map((list) => (
+                          <button
+                            key={list.id}
+                            onClick={() => {
+                              setChoosingList(false);
+                              addToShopping.mutate(list.id);
+                            }}
+                            disabled={addToShopping.isPending}
+                            className="w-full text-left text-sm px-3 py-2.5 rounded-lg border border-gray-100 bg-gray-50 hover:bg-gray-100 disabled:opacity-50"
+                          >
+                            <span className="font-medium text-gray-800">{list.name}</span>{" "}
+                            <span className="text-gray-400 text-xs">
+                              ({list.items.length} item{list.items.length === 1 ? "" : "s"})
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                      {addToShopping.isPending && (
+                        <p className="text-xs text-gray-500 mt-3">Adding ingredients…</p>
+                      )}
+                    </div>
                   </div>
                 )}
               </section>

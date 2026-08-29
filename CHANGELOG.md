@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-29
+
 ### Added
 
 - **Recipe details offline-first.** Tapping a recipe in the list opens a detail
@@ -30,14 +32,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cargo workspace.** A root `Cargo.toml` now declares a virtual workspace with
   shared `[workspace.package]` metadata (version, edition, etc.) that
   `src-tauri/` inherits from; the lockfile moved to the workspace root.
+- **Live sync progress.** Recipe sync now emits progress events and the Settings
+  screen shows a progress bar with a live recipe/thumbnail counter and
+  "Connecting to server…" state instead of hanging silently.
+- **App version display.** The Settings screen shows the app version, sourced
+  from the workspace `Cargo.toml` at compile time.
 
 ### Changed
 
+- **HTTPS on Android.** reqwest is downgraded to 0.12 with bundled Mozilla
+  roots (`rustls-tls-webpki-roots`) so sync works over TLS on Android without
+  `rustls-platform-verifier`, which panicked on the first HTTPS request.
+- **Image downloads.** Images are fetched in parallel batches with a per-image
+  timeout, plus 10 s connect / 30 s request timeouts on the Mealie client.
 - Local shopping lists are pruned when a server refresh reports them deleted
   (`delete_shopping_lists_except`).
 
 ### Fixed
 
+- **Bottom navigation overlap.** The tab bar no longer overlaps the Android
+  system gesture/navigation bar (`viewport-fit=cover` + safe-area insets).
+- **"Add to list" list picker.** The shopping-list picker on the recipe detail
+  screen rendered off-screen and appeared to do nothing; it is now a bottom
+  sheet modal that reliably opens.
+- **Shopping tab refresh loop.** The page could get stuck showing
+  "Refreshing…" forever; it now refreshes exactly once when opened.
 - `set_shopping_item_checked` now echoes the item's existing display/note fields
   in the PUT body, which prevented the server from wiping an item's display
   text and unit when toggling it.
@@ -59,5 +78,6 @@ Initial release.
 - **Android support.** Build environment and `gen/android` scaffold for
   `cargo tauri android {init,dev,build}`.
 
-[Unreleased]: https://github.com/BobBicknell/RustyMealie/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/BobBicknell/RustyMealie/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.0
 [0.1.0]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.1.0

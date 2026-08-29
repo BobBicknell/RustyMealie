@@ -88,13 +88,19 @@ function ItemRow({
 export function ShoppingListScreen() {
   const queryClient = useQueryClient();
   const [settings, setSettings] = useState<SyncSettings | null>(null);
-  const [didAutoRefresh, setDidAutoRefresh] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     settingsService.loadSettings().then((loaded) => {
       if (cancelled) return;
       setSettings(loaded);
+      // Keep the list fresh from the server when this screen first opens with
+      // network available. A recipe added on another screen (or an add whose
+      // local write was interrupted) can otherwise leave the cached list empty
+      // while the server has items. Exactly-once per mount.
+      if (loaded.base_url.trim() && loaded.token.trim()) {
+        refreshMutation.mutate(loaded);
+      }
     });
     return () => {
       cancelled = true;
@@ -113,14 +119,6 @@ export function ShoppingListScreen() {
     queryKey: ["shoppingLists"],
     queryFn: () => dbService.getShoppingLists(),
   });
-
-  useEffect(() => {
-    if (didAutoRefresh || !hasNetwork || isPending) return;
-    if (lists && lists.length === 0) {
-      setDidAutoRefresh(true);
-      refreshMutation.mutate(settings!);
-    }
-  }, [settings, hasNetwork, isPending, lists, didAutoRefresh, refreshMutation]);
 
   const toggleMutation = useMutation({
     mutationFn: ({
