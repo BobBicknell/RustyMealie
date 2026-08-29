@@ -590,6 +590,41 @@ pub mod commands {
 
         Ok(parse_local_shopping_list(&list_id, &name, &raw))
     }
+
+    /// Permanently delete every item on a shopping list whose `checked` flag
+    /// is set, then refresh that list's local cache.
+    #[tauri::command]
+    pub async fn clear_checked_shopping_items(
+        state: tauri::State<'_, AppState>,
+        base_url: String,
+        token: String,
+        list_id: String,
+    ) -> Result<ShoppingList, String> {
+        let client = MealieClient::new(base_url, token);
+        let detail = client.fetch_shopping_list(&list_id).await?;
+        let checked_ids: Vec<String> = detail
+            .list_items
+            .iter()
+            .filter(|item| item.checked)
+            .filter_map(|item| item.id.clone())
+            .collect();
+
+        client.delete_shopping_items(&checked_ids).await?;
+
+        let detail = client.fetch_shopping_list(&list_id).await?;
+        let name = detail
+            .name
+            .clone()
+            .filter(|n| !n.trim().is_empty())
+            .unwrap_or_else(|| list_id.clone());
+        let raw = serde_json::to_string(&detail).unwrap_or_else(|_| "{}".into());
+
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        db::upsert_shopping_list(&conn, &list_id, &name, &raw, unix_now())
+            .map_err(|e| e.to_string())?;
+
+        Ok(parse_local_shopping_list(&list_id, &name, &raw))
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -621,7 +656,8 @@ pub fn run() {
             commands::refresh_shopping_lists,
             commands::toggle_shopping_item,
             commands::add_shopping_list_item,
-            commands::add_recipe_to_shopping_list
+            commands::add_recipe_to_shopping_list,
+            commands::clear_checked_shopping_items
         ])
         .run(tauri::generate_context!())
         .expect("error while running RustyMeals");

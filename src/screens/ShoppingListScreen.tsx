@@ -34,12 +34,12 @@ function AddItemForm({
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="Add an item…"
-        className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
       />
       <button
         type="submit"
         disabled={disabled || !trimmed}
-        className="rounded-lg bg-blue-600 text-white text-sm font-medium px-3 py-2 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="shrink-0 whitespace-nowrap rounded-lg bg-blue-600 text-white text-sm font-medium px-3 py-2 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         Add
       </button>
@@ -179,6 +179,17 @@ export function ShoppingListScreen() {
     onError: (err) => console.error("Failed to add shopping item:", err),
   });
 
+  const clearCheckedMutation = useMutation({
+    mutationFn: (listId: string) =>
+      dbService.clearCheckedShoppingItems(
+        settings!.base_url,
+        settings!.token,
+        listId
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shoppingLists"] }),
+    onError: (err) => console.error("Failed to clear checked items:", err),
+  });
+
   const pendingCount = (list: ShoppingList) =>
     list.items.filter((item) => !item.checked).length;
 
@@ -238,15 +249,26 @@ export function ShoppingListScreen() {
                 key={list.id}
                 className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden"
               >
-                <header className="flex items-center justify-between px-3 py-2.5 border-b border-gray-100">
+                <header className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-gray-100">
                   <h2 className="font-semibold text-gray-900 truncate">{list.name}</h2>
-                  <span className="text-xs font-medium text-gray-500 whitespace-nowrap">
-                    {list.items.length === 0
-                      ? "Empty"
-                      : pending === 0
-                        ? `${done} done ✓`
-                        : `${pending} left`}
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {done > 0 && (
+                      <button
+                        onClick={() => clearCheckedMutation.mutate(list.id)}
+                        disabled={!hasNetwork || clearCheckedMutation.isPending}
+                        className="shrink-0 whitespace-nowrap text-xs font-medium text-red-600 rounded-md px-2 py-1 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {clearCheckedMutation.isPending ? "Removing…" : `Remove ${done} ✓`}
+                      </button>
+                    )}
+                    <span className="text-xs font-medium text-gray-500 whitespace-nowrap">
+                      {list.items.length === 0
+                        ? "Empty"
+                        : pending === 0
+                          ? `${done} done ✓`
+                          : `${pending} left`}
+                    </span>
+                  </div>
                 </header>
                 {list.items.length === 0 ? (
                   <p className="text-sm text-gray-400 px-3 py-4 text-center">

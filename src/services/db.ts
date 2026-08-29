@@ -208,4 +208,21 @@ export const dbService = {
             throw error;
         }
     },
+
+    async clearCheckedShoppingItems(
+        baseUrl: string,
+        token: string,
+        listId: string
+    ): Promise<ShoppingList> {
+        try {
+            return await invoke<ShoppingList>('clear_checked_shopping_items', {
+                baseUrl,
+                token,
+                listId,
+            });
+        } catch (error) {
+            console.error(`Failed to clear checked items from ${listId}:`, error);
+            throw error;
+        }
+    },
 };

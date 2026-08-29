@@ -398,6 +398,30 @@ impl MealieClient {
         serde_json::from_value(item.clone())
             .map_err(|e| format!("Failed to parse updated shopping item: {}", e))
     }
+
+    /// Permanently delete a set of shopping-list items by their IDs. Mealie's
+    /// bulk delete takes the IDs as repeated `ids` query parameters.
+    pub async fn delete_shopping_items(&self, item_ids: &[String]) -> Result<(), String> {
+        if item_ids.is_empty() {
+            return Ok(());
+        }
+
+        let url = format!("{}/api/households/shopping/items", self.base_url);
+        let response = self
+            .client
+            .delete(&url)
+            .bearer_auth(&self.token)
+            .query(&item_ids.iter().map(|id| ("ids", id)).collect::<Vec<_>>())
+            .send()
+            .await
+            .map_err(|e| format!("Network request failed: {}", e))?;
+
+        response
+            .error_for_status()
+            .map_err(|e| format!("Failed to delete shopping items: {}", e))?;
+
+        Ok(())
+    }
 }
 
 /// Editable fields accepted by the item PUT endpoint. We echo these from
