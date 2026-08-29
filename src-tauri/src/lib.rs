@@ -177,7 +177,13 @@ pub mod commands {
                 );
             }
         }
-        emit_progress(&app, "recipes", total_recipes, total_recipes, "Recipe list ready");
+        emit_progress(
+            &app,
+            "recipes",
+            total_recipes,
+            total_recipes,
+            "Recipe list ready",
+        );
 
         // Download a local thumbnail for every recipe that is missing one,
         // so the list and detail views show images even offline. Recipes
@@ -213,12 +219,9 @@ pub mod commands {
                 for handle in batch.drain(..) {
                     processed_images += 1;
                     if let Ok((id, Ok(bytes))) = handle.await {
-                        if let Ok(path) = write_image_file(
-                            &state.images_dir,
-                            &id,
-                            "min-original.webp",
-                            &bytes,
-                        ) {
+                        if let Ok(path) =
+                            write_image_file(&state.images_dir, &id, "min-original.webp", &bytes)
+                        {
                             if let Ok(conn) = state.db.lock() {
                                 if db::set_recipe_image(&conn, &id, &path).is_ok() {
                                     images_downloaded += 1;
@@ -258,7 +261,13 @@ pub mod commands {
             );
         }
         if images_total > 0 {
-            emit_progress(&app, "images", images_total, images_total, "Thumbnails ready");
+            emit_progress(
+                &app,
+                "images",
+                images_total,
+                images_total,
+                "Thumbnails ready",
+            );
         }
 
         let offline_refs = {

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-29
+
+Maintenance release with no user-visible changes; corrects `cargo fmt`
+formatting in the sync module so the CI formatting check passes.
+
 ## [0.2.0] - 2026-08-29
 
 ### Added
@@ -78,6 +83,7 @@ Initial release.
 - **Android support.** Build environment and `gen/android` scaffold for
   `cargo tauri android {init,dev,build}`.
 
-[Unreleased]: https://github.com/BobBicknell/RustyMealie/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/BobBicknell/RustyMealie/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.1
 [0.2.0]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.0
 [0.1.0]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.1.0
