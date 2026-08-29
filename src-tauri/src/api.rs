@@ -1,6 +1,7 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::time::Duration;
 
 #[derive(Debug, Deserialize)]
 pub struct MealieTag {
@@ -76,6 +77,7 @@ pub struct MealieShoppingList {
 
 const PAGE_SIZE: usize = 100;
 
+#[derive(Clone)]
 pub struct MealieClient {
     client: Client,
     base_url: String,
@@ -84,8 +86,13 @@ pub struct MealieClient {
 
 impl MealieClient {
     pub fn new(base_url: String, token: String) -> Self {
+        let client = Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
+            .build()
+            .expect("failed to build HTTP client");
         Self {
-            client: Client::new(),
+            client,
             base_url: base_url.trim_end_matches('/').to_string(),
             token,
         }

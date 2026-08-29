@@ -20,6 +20,13 @@ export interface SyncReport {
     finished_at: number;
 }
 
+export interface SyncProgress {
+    phase: string;
+    processed: number;
+    total: number;
+    message: string;
+}
+
 export interface SyncStatus {
     last_sync_at: number | null;
     last_sync_count: number | null;
@@ -64,6 +71,10 @@ export const settingsService = {
         await settingsStore.set('base_url', settings.base_url);
         await settingsStore.set('token', settings.token);
         await settingsStore.save();
+    },
+
+    async getAppVersion(): Promise<string> {
+        return await invoke<string>('get_app_version');
     },
 };
 

@@ -13,13 +13,20 @@ pub mod commands {
     use crate::db::{self, ImageToFetch, OfflineRecipeRef, RecipeSummary};
     use serde::Serialize;
     use std::path::Path;
+    use std::time::Duration;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use tauri::Emitter;
 
     fn unix_now() -> i64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0)
+    }
+
+    #[tauri::command]
+    pub async fn get_app_version(app: tauri::AppHandle) -> Result<String, String> {
+        Ok(app.package_info().version.to_string())
     }
 
     #[tauri::command]
@@ -82,6 +89,35 @@ pub mod commands {
         pub finished_at: i64,
     }
 
+    /// Live progress emitted over the `sync-progress` event while a sync
+    /// is in flight, so the UI can show what is happening instead of an
+    /// indefinite spinner.
+    #[derive(Debug, Serialize, Clone)]
+    pub struct SyncProgress {
+        pub phase: String,
+        pub processed: usize,
+        pub total: usize,
+        pub message: String,
+    }
+
+    fn emit_progress(
+        app: &tauri::AppHandle,
+        phase: &str,
+        processed: usize,
+        total: usize,
+        message: &str,
+    ) {
+        let _ = app.emit(
+            "sync-progress",
+            SyncProgress {
+                phase: phase.to_string(),
+                processed,
+                total,
+                message: message.to_string(),
+            },
+        );
+    }
+
     fn write_image_file(
         images_dir: &Path,
         recipe_id: &str,
@@ -100,17 +136,20 @@ pub mod commands {
 
     #[tauri::command]
     pub async fn trigger_sync(
+        app: tauri::AppHandle,
         state: tauri::State<'_, AppState>,
         base_url: String,
         token: String,
     ) -> Result<SyncReport, String> {
+        emit_progress(&app, "connect", 0, 0, "Connecting to server…");
+
         let client = MealieClient::new(base_url.clone(), token);
         let summaries = client.fetch_all_recipe_summaries().await?;
 
         let timestamp = unix_now();
         let total_recipes = summaries.len();
 
-        for summary in &summaries {
+        for (index, summary) in summaries.iter().enumerate() {
             let (Some(id), Some(name)) = (&summary.id, &summary.name) else {
                 continue;
             };
@@ -128,32 +167,98 @@ pub mod commands {
                 timestamp,
             )
             .map_err(|e| e.to_string())?;
+            if index == 0 || index + 1 == total_recipes {
+                emit_progress(
+                    &app,
+                    "recipes",
+                    index + 1,
+                    total_recipes,
+                    &format!("Indexing recipes… {index} of {total_recipes}"),
+                );
+            }
         }
+        emit_progress(&app, "recipes", total_recipes, total_recipes, "Recipe list ready");
 
         // Download a local thumbnail for every recipe that is missing one,
         // so the list and detail views show images even offline. Recipes
-        // whose download fails retry on the next sync.
+        // whose download fails retry on the next sync. Downloads run in
+        // parallel batches so a slow connection does not serialize each
+        // thumbnail fetch.
         let images_to_fetch = {
             let conn = state.db.lock().map_err(|e| e.to_string())?;
             db::get_recipes_needing_image(&conn).map_err(|e| e.to_string())?
         };
 
         let mut images_downloaded = 0usize;
+        let images_total = images_to_fetch.len();
+        let mut processed_images = 0usize;
+        let mut batch = Vec::new();
+
         for ImageToFetch { id, .. } in images_to_fetch {
-            let Ok(bytes) = client.download_recipe_image(&id, "min-original.webp").await else {
-                continue;
-            };
-            let Ok(path) = write_image_file(&state.images_dir, &id, "min-original.webp", &bytes)
-            else {
-                continue;
-            };
-            let conn = match state.db.lock() {
-                Ok(guard) => guard,
-                Err(_) => continue,
-            };
-            if db::set_recipe_image(&conn, &id, &path).is_ok() {
-                images_downloaded += 1;
+            let worker = client.clone();
+            let task_id = id.clone();
+            batch.push(tokio::spawn(async move {
+                // Images are a nice-to-have cached offline copy; a slow or
+                // hung fetch must not wedge the whole sync. Cap each recipe's
+                // image attempt so a bad connection drains the batch quickly.
+                let result = tokio::time::timeout(
+                    Duration::from_secs(15),
+                    worker.download_recipe_image(&id, "min-original.webp"),
+                )
+                .await
+                .unwrap_or(Err("image download timed out".to_string()));
+                (task_id, result)
+            }));
+            if batch.len() >= 4 {
+                for handle in batch.drain(..) {
+                    processed_images += 1;
+                    if let Ok((id, Ok(bytes))) = handle.await {
+                        if let Ok(path) = write_image_file(
+                            &state.images_dir,
+                            &id,
+                            "min-original.webp",
+                            &bytes,
+                        ) {
+                            if let Ok(conn) = state.db.lock() {
+                                if db::set_recipe_image(&conn, &id, &path).is_ok() {
+                                    images_downloaded += 1;
+                                }
+                            }
+                        }
+                    }
+                    emit_progress(
+                        &app,
+                        "images",
+                        processed_images,
+                        images_total,
+                        &format!("Downloading thumbnail {processed_images} of {images_total}…"),
+                    );
+                }
             }
+        }
+        for handle in batch {
+            processed_images += 1;
+            if let Ok((id, Ok(bytes))) = handle.await {
+                if let Ok(path) =
+                    write_image_file(&state.images_dir, &id, "min-original.webp", &bytes)
+                {
+                    if let Ok(conn) = state.db.lock() {
+                        if db::set_recipe_image(&conn, &id, &path).is_ok() {
+                            images_downloaded += 1;
+                        }
+                    }
+                }
+            }
+            emit_progress(
+                &app,
+                "images",
+                processed_images,
+                images_total,
+                &format!("Downloading thumbnail {processed_images} of {images_total}…"),
+            );
+        }
+        if images_total > 0 {
+            emit_progress(&app, "images", images_total, images_total, "Thumbnails ready");
         }
 
         let offline_refs = {
@@ -163,12 +268,20 @@ pub mod commands {
 
         let mut details_synced = 0usize;
         let mut errors = 0usize;
+        let details_total = offline_refs.len();
 
-        for OfflineRecipeRef { id, slug, .. } in offline_refs {
+        for (index, OfflineRecipeRef { id, slug, .. }) in offline_refs.into_iter().enumerate() {
             let Some(slug) = slug else {
                 errors += 1;
                 continue;
             };
+            emit_progress(
+                &app,
+                "details",
+                index,
+                details_total,
+                &format!("Pulling offline recipe {index} of {details_total}…"),
+            );
 
             let detail = match client.fetch_recipe_detail(&slug).await {
                 Ok(detail) => detail,
@@ -224,6 +337,8 @@ pub mod commands {
                 .map_err(|e| e.to_string())?;
             db::set_sync_meta(&conn, "server_url", &base_url).map_err(|e| e.to_string())?;
         }
+
+        emit_progress(&app, "done", 0, 0, "Sync complete");
 
         Ok(SyncReport {
             total_recipes,
@@ -486,6 +601,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::get_app_version,
             commands::get_recipes,
             commands::get_recipe_detail,
             commands::fetch_recipe_detail,

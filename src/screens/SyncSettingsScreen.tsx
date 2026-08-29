@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { listen } from "@tauri-apps/api/event";
 import {
   dbService,
   settingsService,
+  SyncProgress,
   SyncReport,
   SyncStatus,
 } from "../services/db";
@@ -17,6 +19,16 @@ export function SyncSettingsScreen() {
   const [baseUrlInput, setBaseUrlInput] = useState("");
   const [tokenInput, setTokenInput] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [progress, setProgress] = useState<SyncProgress | null>(null);
+
+  useEffect(() => {
+    const unlistenPromise = listen<SyncProgress>("sync-progress", (event) => {
+      setProgress(event.payload);
+    });
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
 
   const { data: status } = useQuery<SyncStatus>({
     queryKey: ["syncStatus"],
@@ -27,6 +39,12 @@ export function SyncSettingsScreen() {
     queryKey: ["lastSyncReport"],
     queryFn: () => null,
     initialData: null,
+    staleTime: Infinity,
+  });
+
+  const { data: appVersion } = useQuery<string>({
+    queryKey: ["appVersion"],
+    queryFn: () => settingsService.getAppVersion(),
     staleTime: Infinity,
   });
 
@@ -45,7 +63,9 @@ export function SyncSettingsScreen() {
 
   const syncMutation = useMutation({
     mutationFn: () => dbService.triggerSync(baseUrlInput.trim(), tokenInput.trim()),
+    onMutate: () => setProgress(null),
     onSuccess: async (report) => {
+      setProgress(null);
       queryClient.setQueryData(["lastSyncReport"], report);
       await queryClient.invalidateQueries({ queryKey: ["recipes"] });
       await queryClient.invalidateQueries({ queryKey: ["allRecipes"] });
@@ -110,6 +130,31 @@ export function SyncSettingsScreen() {
         </button>
       </form>
 
+      {syncMutation.isPending && progress && (
+        <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 text-xs text-blue-800 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin shrink-0" />
+            <span className="font-medium">{progress.message}</span>
+          </div>
+          {progress.total > 0 && (
+            <>
+              <div className="h-2 w-full rounded-full bg-blue-200 overflow-hidden">
+                <div
+                  className="h-full bg-blue-600 transition-all"
+                  style={{
+                    width: `${Math.min(100, (progress.processed / progress.total) * 100)}%`,
+                  }}
+                />
+              </div>
+              <div className="text-blue-600">
+                {progress.processed} of {progress.total}
+                {progress.phase === "images" ? " thumbnails" : " recipes"}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {syncMutation.isError && (
         <p className="text-sm text-red-600 bg-red-50 rounded-lg p-3 break-words">
           Sync failed: {String(syncMutation.error)}
@@ -132,6 +177,8 @@ export function SyncSettingsScreen() {
         <p>Recipes known: {status?.last_sync_count ?? 0}</p>
         <p className="break-all">Server: {status?.server_url ?? "not configured"}</p>
       </div>
+
+      <p className="text-center text-xs text-gray-400 mt-4">RustyMeals v{appVersion ?? "…"}</p>
     </div>
   );
 }

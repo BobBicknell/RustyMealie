@@ -19,7 +19,7 @@ function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 text-gray-900">
-      <main className="flex-1 overflow-y-auto pb-16">
+      <main className="flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+4rem)]">
         {openRecipe ? (
           <RecipeDetailScreen recipe={openRecipe} onBack={() => setOpenRecipe(null)} />
         ) : activeTab === "recipes" ? (
@@ -32,7 +32,7 @@ function App() {
       </main>
 
       {!openRecipe && (
-        <nav className="fixed bottom-0 inset-x-0 flex border-t border-gray-200 bg-white">
+        <nav className="fixed bottom-0 inset-x-0 flex border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)]">
           {tabs.map((tab) => (
             <button
               key={tab.id}
