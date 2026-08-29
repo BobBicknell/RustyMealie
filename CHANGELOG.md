@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-29
+
+### Added
+
+- **Android APK in releases.** Releases now include a debug-signed Android
+  APK (`app-universal-debug.apk`) alongside the desktop bundles, built
+  automatically by the release workflow, so the app can be sideloaded onto an
+  Android phone via `adb install -r`.
+
+### Removed
+
+- The `.deb` bundle is no longer published; the portable AppImage remains for
+  Linux desktop users.
+
 ## [0.2.1] - 2026-08-29
 
 Maintenance release with no user-visible changes; corrects `cargo fmt`
@@ -83,7 +97,8 @@ Initial release.
 - **Android support.** Build environment and `gen/android` scaffold for
   `cargo tauri android {init,dev,build}`.
 
-[Unreleased]: https://github.com/BobBicknell/RustyMealie/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/BobBicknell/RustyMealie/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.2
 [0.2.1]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.1
 [0.2.0]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.0
 [0.1.0]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.1.0
