@@ -55,6 +55,58 @@ jobs:
         run: npm ci
       - name: Build app bundle
         run: npm run tauri build
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+
+  android:
+    needs: gate
+    if: needs.gate.outputs.allow == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android command line tools and SDK packages
+        run: |
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build Android APK
+        run: npx tauri android build --apk --debug
+        working-directory: src-tauri
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: src-tauri/gen/android/app/build/outputs/apk/universal/debug/*.apk
+          if-no-files-found: error
+
+  publish:
+    needs: [build, android]
+    if: needs.build.result == 'success' && needs.android.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -62,6 +114,4 @@ jobs:
           name: v${{ needs.gate.outputs.version }}
           generate_release_notes: true
           fail_on_unmatched_files: false
-          files: |
-            target/release/bundle/deb/*.deb
-            target/release/bundle/appimage/*.AppImage
+          files: artifacts/*
