@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 concurrency:
   group: release
   cancel-in-progress: false
@@ -59,7 +62,6 @@ jobs:
           name: v${{ needs.gate.outputs.version }}
           generate_release_notes: true
           fail_on_unmatched_files: false
-          skip_if_release_exists: true
           files: |
             target/release/bundle/deb/*.deb
             target/release/bundle/appimage/*.AppImage
