@@ -14,6 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -64,11 +69,11 @@ jobs:
         run: npm ci
       - name: Drop machine-specific Gradle Java home
         run: sed -i '/org.gradle.java.home/d' src-tauri/gen/android/gradle.properties
-      - name: Build debug APK
-        run: npm run tauri android build -- --debug --apk --target aarch64
-      - name: Upload debug APK
+      - name: Build release APK
+        run: npm run tauri android build -- --apk
+      - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: rustymeals-debug-apk
-          path: src-tauri/gen/android/app/build/outputs/apk/universal/debug/*.apk
+          name: rustymeals-apk
+          path: src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
           if-no-files-found: error

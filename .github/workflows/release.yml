@@ -88,13 +88,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Build Android APK
-        run: npx tauri android build --apk --debug
+        run: npx tauri android build --apk
         working-directory: src-tauri
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: apk
-          path: src-tauri/gen/android/app/build/outputs/apk/universal/debug/*.apk
+          path: src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
           if-no-files-found: error
 
   publish:
