@@ -98,7 +98,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [build, android]
+    needs: [gate, build, android]
     if: needs.build.result == 'success' && needs.android.result == 'success'
     runs-on: ubuntu-latest
     steps:
