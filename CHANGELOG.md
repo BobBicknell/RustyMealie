@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-08-29
+
+### Security
+
+- **h2 vulnerability fixed.** Bumped the `h2` dependency to 0.4.19 to resolve
+  RUSTSEC-2026-0258 (unbounded empty DATA frames / denial of service).
+- **Pre-push audit hook.** Added a git pre-push hook that runs `cargo audit`
+  and blocks pushes that contain known dependency vulnerabilities.
+
 ## [0.2.4] - 2026-08-29
 
 ### Added
@@ -137,7 +146,8 @@ Initial release.
 - **Android support.** Build environment and `gen/android` scaffold for
   `cargo tauri android {init,dev,build}`.
 
-[Unreleased]: https://github.com/BobBicknell/RustyMealie/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/BobBicknell/RustyMealie/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.5
 [0.2.4]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.4
 [0.2.3]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.3
 [0.2.2]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.2
