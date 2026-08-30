@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-08-29
+
+### Added
+
+- **Remove checked items.** Shopping lists now show a "Remove N ✓" button in
+  the list header when one or more items are crossed off, permanently deleting
+  them on the server via Mealie's bulk delete endpoint and refreshing the local
+  cache.
+
+### Fixed
+
+- **Add input overflow.** The "Add" field and button on the shopping screen no
+  longer run off the right edge of the card on narrow screens.
+- **Android status bar overlap.** Page content is now padded below the status
+  bar/notch area (`safe-area-inset-top`) instead of sitting underneath it.
+- **Dev watcher crash.** The Vite dev server no longer watches the Cargo build
+  output directories, which previously exhausted the inotify file-watcher limit
+  and crashed `npm run tauri dev` with `ENOSPC`.
+
+### Changed
+
+- **CI on GitHub Actions v5.** Workflows upgraded past the deprecated Node 20
+  runtime.
+
 ## [0.2.3] - 2026-08-29
 
 ### Changed
@@ -113,7 +137,8 @@ Initial release.
 - **Android support.** Build environment and `gen/android` scaffold for
   `cargo tauri android {init,dev,build}`.
 
-[Unreleased]: https://github.com/BobBicknell/RustyMealie/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/BobBicknell/RustyMealie/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.4
 [0.2.3]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.3
 [0.2.2]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.2
 [0.2.1]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.1

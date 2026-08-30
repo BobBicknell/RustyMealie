@@ -21,8 +21,10 @@ export default defineConfig(async () => ({
         }
       : undefined,
     watch: {
-      // Tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // Tell Vite to ignore watching build output directories (`src-tauri`
+      // and the workspace Cargo `target/`), which otherwise balloon the
+      // inotify watcher count and hit the system limit.
+      ignored: ["**/src-tauri/**", "**/target/**", "**/node_modules/**"],
     },
   },
 }));
