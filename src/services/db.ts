@@ -64,13 +64,27 @@ export const settingsService = {
     async loadSettings(): Promise<SyncSettings> {
         const base_url = (await settingsStore.get<string>('base_url')) ?? '';
         const token = (await settingsStore.get<string>('token')) ?? '';
-        return { base_url, token };
+        const settings = { base_url, token };
+        // Push into the Rust core's in-memory credentials so mutating
+        // commands don't need base_url/token passed on every call.
+        if (base_url.trim() && token.trim()) {
+            await settingsService.setCredentials(settings);
+        }
+        return settings;
     },
 
     async saveSettings(settings: SyncSettings): Promise<void> {
         await settingsStore.set('base_url', settings.base_url);
         await settingsStore.set('token', settings.token);
         await settingsStore.save();
+        await settingsService.setCredentials(settings);
+    },
+
+    async setCredentials(settings: SyncSettings): Promise<void> {
+        await invoke('set_credentials', {
+            baseUrl: settings.base_url,
+            token: settings.token,
+        });
     },
 
     async getAppVersion(): Promise<string> {
@@ -102,14 +116,9 @@ export const dbService = {
         }
     },
 
-    async fetchRecipeDetail(
-        baseUrl: string,
-        token: string,
-        id: string,
-        slug: string
-    ): Promise<any> {
+    async fetchRecipeDetail(id: string, slug: string): Promise<any> {
         try {
-            const rawJson = await invoke<string>('fetch_recipe_detail', { baseUrl, token, id, slug });
+            const rawJson = await invoke<string>('fetch_recipe_detail', { id, slug });
             return JSON.parse(rawJson);
         } catch (error) {
             console.error(`Failed to fetch recipe detail for ID ${id} from server:`, error);
@@ -126,8 +135,8 @@ export const dbService = {
         }
     },
 
-    async triggerSync(baseUrl: string, token: string): Promise<SyncReport> {
-        return await invoke<SyncReport>('trigger_sync', { baseUrl, token });
+    async triggerSync(): Promise<SyncReport> {
+        return await invoke<SyncReport>('trigger_sync');
     },
 
     async getSyncStatus(): Promise<SyncStatus> {
@@ -143,24 +152,17 @@ export const dbService = {
         }
     },
 
-    async refreshShoppingLists(baseUrl: string, token: string): Promise<ShoppingListsSyncReport> {
-        return await invoke<ShoppingListsSyncReport>('refresh_shopping_lists', {
-            baseUrl,
-            token,
-        });
+    async refreshShoppingLists(): Promise<ShoppingListsSyncReport> {
+        return await invoke<ShoppingListsSyncReport>('refresh_shopping_lists');
     },
 
     async toggleShoppingItem(
-        baseUrl: string,
-        token: string,
         listId: string,
         itemId: string,
         checked: boolean
     ): Promise<ShoppingList> {
         try {
             return await invoke<ShoppingList>('toggle_shopping_item', {
-                baseUrl,
-                token,
                 listId,
                 itemId,
                 checked,
@@ -171,16 +173,9 @@ export const dbService = {
         }
     },
 
-    async addShoppingListItem(
-        baseUrl: string,
-        token: string,
-        listId: string,
-        note: string
-    ): Promise<ShoppingList> {
+    async addShoppingListItem(listId: string, note: string): Promise<ShoppingList> {
         try {
             return await invoke<ShoppingList>('add_shopping_list_item', {
-                baseUrl,
-                token,
                 listId,
                 note,
             });
@@ -190,16 +185,9 @@ export const dbService = {
         }
     },
 
-    async addRecipeToShoppingList(
-        baseUrl: string,
-        token: string,
-        listId: string,
-        recipeId: string
-    ): Promise<ShoppingList> {
+    async addRecipeToShoppingList(listId: string, recipeId: string): Promise<ShoppingList> {
         try {
             return await invoke<ShoppingList>('add_recipe_to_shopping_list', {
-                baseUrl,
-                token,
                 listId,
                 recipeId,
             });
@@ -209,15 +197,9 @@ export const dbService = {
         }
     },
 
-    async clearCheckedShoppingItems(
-        baseUrl: string,
-        token: string,
-        listId: string
-    ): Promise<ShoppingList> {
+    async clearCheckedShoppingItems(listId: string): Promise<ShoppingList> {
         try {
             return await invoke<ShoppingList>('clear_checked_shopping_items', {
-                baseUrl,
-                token,
                 listId,
             });
         } catch (error) {

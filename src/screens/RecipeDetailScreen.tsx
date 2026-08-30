@@ -79,12 +79,7 @@ export function RecipeDetailScreen({
       if (!recipe.slug) {
         throw new Error("This recipe has no server slug available to fetch.");
       }
-      return dbService.fetchRecipeDetail(
-        settings.base_url,
-        settings.token,
-        recipe.id,
-        recipe.slug
-      );
+      return dbService.fetchRecipeDetail(recipe.id, recipe.slug);
     },
     onSuccess: async () => {
       await localQuery.refetch();
@@ -119,12 +114,7 @@ export function RecipeDetailScreen({
         if (!settings.base_url || !settings.token) {
           throw new Error("No server configured. Connect in Settings first.");
         }
-        return dbService.addRecipeToShoppingList(
-          settings.base_url,
-          settings.token,
-          listId,
-          recipe.id
-        );
+        return dbService.addRecipeToShoppingList(listId, recipe.id);
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["shoppingLists"] });
@@ -137,7 +127,7 @@ export function RecipeDetailScreen({
         if (!settings.base_url || !settings.token) {
           throw new Error("No server configured. Connect in Settings first.");
         }
-        return dbService.refreshShoppingLists(settings.base_url, settings.token);
+        return dbService.refreshShoppingLists();
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["shoppingLists"] });

@@ -99,7 +99,7 @@ export function ShoppingListScreen() {
       // local write was interrupted) can otherwise leave the cached list empty
       // while the server has items. Exactly-once per mount.
       if (loaded.base_url.trim() && loaded.token.trim()) {
-        refreshMutation.mutate(loaded);
+        refreshMutation.mutate();
       }
     });
     return () => {
@@ -111,7 +111,7 @@ export function ShoppingListScreen() {
     Boolean(settings) && Boolean(settings!.base_url.trim()) && Boolean(settings!.token.trim());
 
   const refreshMutation = useMutation({
-    mutationFn: (s: SyncSettings) => dbService.refreshShoppingLists(s.base_url, s.token),
+    mutationFn: () => dbService.refreshShoppingLists(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shoppingLists"] }),
   });
 
@@ -129,14 +129,7 @@ export function ShoppingListScreen() {
       listId: string;
       item: ShoppingListItem;
       checked: boolean;
-    }) =>
-      dbService.toggleShoppingItem(
-        settings!.base_url,
-        settings!.token,
-        listId,
-        item.id,
-        checked
-      ),
+    }) => dbService.toggleShoppingItem(listId, item.id, checked),
     onMutate: async ({ listId, item, checked }) => {
       await queryClient.cancelQueries({ queryKey: ["shoppingLists"] });
       const previous = queryClient.getQueryData<ShoppingList[]>(["shoppingLists"]);
@@ -164,28 +157,18 @@ export function ShoppingListScreen() {
 
   const refresh = () => {
     if (!hasNetwork || refreshMutation.isPending) return;
-    refreshMutation.mutate(settings!);
+    refreshMutation.mutate();
   };
 
   const addMutation = useMutation({
     mutationFn: ({ listId, note }: { listId: string; note: string }) =>
-      dbService.addShoppingListItem(
-        settings!.base_url,
-        settings!.token,
-        listId,
-        note
-      ),
+      dbService.addShoppingListItem(listId, note),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shoppingLists"] }),
     onError: (err) => console.error("Failed to add shopping item:", err),
   });
 
   const clearCheckedMutation = useMutation({
-    mutationFn: (listId: string) =>
-      dbService.clearCheckedShoppingItems(
-        settings!.base_url,
-        settings!.token,
-        listId
-      ),
+    mutationFn: (listId: string) => dbService.clearCheckedShoppingItems(listId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shoppingLists"] }),
     onError: (err) => console.error("Failed to clear checked items:", err),
   });

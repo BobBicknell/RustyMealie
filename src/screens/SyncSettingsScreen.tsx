@@ -62,7 +62,7 @@ export function SyncSettingsScreen() {
   }, []);
 
   const syncMutation = useMutation({
-    mutationFn: () => dbService.triggerSync(baseUrlInput.trim(), tokenInput.trim()),
+    mutationFn: () => dbService.triggerSync(),
     onMutate: () => setProgress(null),
     onSuccess: async (report) => {
       setProgress(null);

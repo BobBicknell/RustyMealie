@@ -11,6 +11,7 @@ pub mod commands {
     use super::AppState;
     use crate::api::MealieClient;
     use crate::db::{self, ImageToFetch, OfflineRecipeRef, RecipeSummary};
+    use crate::state::Credentials;
     use serde::Serialize;
     use std::path::Path;
     use std::time::Duration;
@@ -27,6 +28,34 @@ pub mod commands {
     #[tauri::command]
     pub fn get_app_version() -> Result<String, String> {
         Ok(env!("CARGO_PKG_VERSION").to_string())
+    }
+
+    /// Store the server URL/token in memory for this session. Called once
+    /// after settings load from the store on startup, and again whenever the
+    /// user saves new ones from the Settings screen. Every other command
+    /// that talks to the server reads from here via `require_credentials`
+    /// instead of taking the token as an argument.
+    #[tauri::command]
+    pub fn set_credentials(
+        state: tauri::State<'_, AppState>,
+        base_url: String,
+        token: String,
+    ) -> Result<(), String> {
+        let mut creds = state.credentials.lock().map_err(|e| e.to_string())?;
+        *creds = Some(Credentials { base_url, token });
+        Ok(())
+    }
+
+    /// Fetch the in-memory credentials, or a clear error if the frontend
+    /// hasn't called `set_credentials` yet this session (e.g. settings were
+    /// never configured).
+    fn require_credentials(state: &tauri::State<'_, AppState>) -> Result<Credentials, String> {
+        state
+            .credentials
+            .lock()
+            .map_err(|e| e.to_string())?
+            .clone()
+            .ok_or_else(|| "Not connected — set the server URL and token in Settings".to_string())
     }
 
     #[tauri::command]
@@ -56,12 +85,11 @@ pub mod commands {
     #[tauri::command]
     pub async fn fetch_recipe_detail(
         state: tauri::State<'_, AppState>,
-        base_url: String,
-        token: String,
         id: String,
         slug: String,
     ) -> Result<String, String> {
-        let client = MealieClient::new(base_url, token);
+        let creds = require_credentials(&state)?;
+        let client = MealieClient::new(creds.base_url, creds.token);
         let detail = client.fetch_recipe_detail(&slug).await?;
         let raw_json = detail.to_string();
         let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -138,44 +166,54 @@ pub mod commands {
     pub async fn trigger_sync(
         app: tauri::AppHandle,
         state: tauri::State<'_, AppState>,
-        base_url: String,
-        token: String,
     ) -> Result<SyncReport, String> {
+        let creds = require_credentials(&state)?;
+        let base_url = creds.base_url;
         emit_progress(&app, "connect", 0, 0, "Connecting to server…");
 
-        let client = MealieClient::new(base_url.clone(), token);
+        let client = MealieClient::new(base_url.clone(), creds.token);
         let summaries = client.fetch_all_recipe_summaries().await?;
 
         let timestamp = unix_now();
         let total_recipes = summaries.len();
 
-        for (index, summary) in summaries.iter().enumerate() {
-            let (Some(id), Some(name)) = (&summary.id, &summary.name) else {
-                continue;
-            };
-            let conn = state.db.lock().map_err(|e| e.to_string())?;
-            db::upsert_recipe_summary(
-                &conn,
-                id,
-                name,
-                summary.slug.as_deref(),
-                summary.description.as_deref(),
-                summary.image.as_deref(),
-                "{}",
-                &summary.tag_names(),
-                &summary.category_names(),
-                timestamp,
-            )
-            .map_err(|e| e.to_string())?;
-            if index == 0 || index + 1 == total_recipes {
-                emit_progress(
-                    &app,
-                    "recipes",
-                    index + 1,
-                    total_recipes,
-                    &format!("Indexing recipes… {index} of {total_recipes}"),
-                );
+        // One transaction for the whole metadata pass instead of a lock
+        // acquisition + implicit transaction per recipe — for a few hundred
+        // recipes that's the difference between one commit and hundreds.
+        {
+            let mut conn = state.db.lock().map_err(|e| e.to_string())?;
+            let tx = conn.transaction().map_err(|e| e.to_string())?;
+            for (index, summary) in summaries.iter().enumerate() {
+                let (Some(id), Some(name)) = (&summary.id, &summary.name) else {
+                    continue;
+                };
+                db::upsert_recipe_summary(
+                    &tx,
+                    id,
+                    name,
+                    summary.slug.as_deref(),
+                    summary.description.as_deref(),
+                    summary.image.as_deref(),
+                    "{}",
+                    &summary.tag_names(),
+                    &summary.category_names(),
+                    timestamp,
+                )
+                .map_err(|e| e.to_string())?;
+                // Emit roughly every 10 recipes (plus the first/last) so the
+                // progress bar visibly moves through a large sync instead of
+                // sitting frozen until the very end.
+                if index == 0 || index + 1 == total_recipes || index % 10 == 0 {
+                    emit_progress(
+                        &app,
+                        "recipes",
+                        index + 1,
+                        total_recipes,
+                        &format!("Indexing recipes… {} of {total_recipes}", index + 1),
+                    );
+                }
             }
+            tx.commit().map_err(|e| e.to_string())?;
         }
         emit_progress(
             &app,
@@ -457,10 +495,9 @@ pub mod commands {
     #[tauri::command]
     pub async fn refresh_shopping_lists(
         state: tauri::State<'_, AppState>,
-        base_url: String,
-        token: String,
     ) -> Result<ShoppingListsSyncReport, String> {
-        let client = MealieClient::new(base_url, token);
+        let creds = require_credentials(&state)?;
+        let client = MealieClient::new(creds.base_url, creds.token);
         let summaries = client.fetch_shopping_lists().await?;
         let timestamp = unix_now();
 
@@ -509,13 +546,12 @@ pub mod commands {
     #[tauri::command]
     pub async fn toggle_shopping_item(
         state: tauri::State<'_, AppState>,
-        base_url: String,
-        token: String,
         list_id: String,
         item_id: String,
         checked: bool,
     ) -> Result<ShoppingList, String> {
-        let client = MealieClient::new(base_url, token);
+        let creds = require_credentials(&state)?;
+        let client = MealieClient::new(creds.base_url, creds.token);
         client.set_shopping_item_checked(&item_id, checked).await?;
 
         let detail = client.fetch_shopping_list(&list_id).await?;
@@ -538,12 +574,11 @@ pub mod commands {
     #[tauri::command]
     pub async fn add_shopping_list_item(
         state: tauri::State<'_, AppState>,
-        base_url: String,
-        token: String,
         list_id: String,
         note: String,
     ) -> Result<ShoppingList, String> {
-        let client = MealieClient::new(base_url, token);
+        let creds = require_credentials(&state)?;
+        let client = MealieClient::new(creds.base_url, creds.token);
         client.create_shopping_list_item(&list_id, &note).await?;
 
         let detail = client.fetch_shopping_list(&list_id).await?;
@@ -567,12 +602,11 @@ pub mod commands {
     #[tauri::command]
     pub async fn add_recipe_to_shopping_list(
         state: tauri::State<'_, AppState>,
-        base_url: String,
-        token: String,
         list_id: String,
         recipe_id: String,
     ) -> Result<ShoppingList, String> {
-        let client = MealieClient::new(base_url, token);
+        let creds = require_credentials(&state)?;
+        let client = MealieClient::new(creds.base_url, creds.token);
         let detail = client
             .add_recipe_to_shopping_list(&list_id, &recipe_id)
             .await?;
@@ -596,11 +630,10 @@ pub mod commands {
     #[tauri::command]
     pub async fn clear_checked_shopping_items(
         state: tauri::State<'_, AppState>,
-        base_url: String,
-        token: String,
         list_id: String,
     ) -> Result<ShoppingList, String> {
-        let client = MealieClient::new(base_url, token);
+        let creds = require_credentials(&state)?;
+        let client = MealieClient::new(creds.base_url, creds.token);
         let detail = client.fetch_shopping_list(&list_id).await?;
         let checked_ids: Vec<String> = detail
             .list_items
@@ -646,6 +679,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_app_version,
+            commands::set_credentials,
             commands::get_recipes,
             commands::get_recipe_detail,
             commands::fetch_recipe_detail,
