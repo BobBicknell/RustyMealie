@@ -8,6 +8,56 @@ import {
   SyncSettings,
 } from "../services/db";
 
+function groupItemsByCategory(items: ShoppingListItem[]): {
+  category: string;
+  color: string | null;
+  uncategorized: boolean;
+  items: ShoppingListItem[];
+}[] {
+  const groups = new Map<string, { color: string | null; items: ShoppingListItem[] }>();
+  for (const item of items) {
+    const key = item.category ?? "";
+    if (!groups.has(key)) {
+      groups.set(key, { color: item.category_color, items: [] });
+    }
+    groups.get(key)!.items.push(item);
+  }
+  const entries = Array.from(groups.entries()).map(([category, { color, items }]) => ({
+    category: category || "Other",
+    color,
+    uncategorized: category === "",
+    items,
+  }));
+  entries.sort((a, b) => {
+    if (a.uncategorized !== b.uncategorized) return a.uncategorized ? 1 : -1;
+    return a.category.localeCompare(b.category);
+  });
+  return entries;
+}
+
+function CategoryHeader({ label, color }: { label: string; color: string | null }) {
+  const tinted = color && /^#[0-9a-fA-F]{6}$/.test(color);
+  const style = tinted
+    ? { backgroundColor: `${color}1a` }
+    : { backgroundColor: "rgb(243 244 246)" };
+  return (
+    <div
+      className="flex items-center gap-1.5 px-2 py-1 mt-2 first:mt-0 rounded-md"
+      style={style}
+    >
+      {(tinted ?? false) && (
+        <span
+          className="w-2 h-2 rounded-full shrink-0"
+          style={{ backgroundColor: color! }}
+        />
+      )}
+      <span className="text-xs font-semibold uppercase tracking-wide text-gray-700">
+        {label}
+      </span>
+    </div>
+  );
+}
+
 function AddItemForm({
   listId,
   onAdd,
@@ -259,21 +309,38 @@ export function ShoppingListScreen() {
                   </p>
                 ) : (
                   <ul className="px-3 pt-1.5">
-                    {list.items.map((item) => (
-                      <li key={item.id}>
-                        <ItemRow
-                          item={item}
-                          onToggle={(i, c) =>
-                            toggleMutation.mutate({
-                              listId: list.id,
-                              item: i,
-                              checked: c,
-                            })
-                          }
-                          disabled={!hasNetwork || toggleMutation.isPending}
-                        />
-                      </li>
-                    ))}
+                    {(() => {
+                      const groups = groupItemsByCategory(list.items);
+                      // Skip category headers entirely when nothing in this
+                      // list has a category set (e.g. the household hasn't
+                      // configured Mealie food labels) — keep the plain flat
+                      // list rather than showing a single redundant "Other".
+                      const showHeaders = !(groups.length === 1 && groups[0].uncategorized);
+                      return groups.map((group) => (
+                        <li key={group.category}>
+                          {showHeaders && (
+                            <CategoryHeader label={group.category} color={group.color} />
+                          )}
+                          <ul>
+                            {group.items.map((item) => (
+                              <li key={item.id}>
+                                <ItemRow
+                                  item={item}
+                                  onToggle={(i, c) =>
+                                    toggleMutation.mutate({
+                                      listId: list.id,
+                                      item: i,
+                                      checked: c,
+                                    })
+                                  }
+                                  disabled={!hasNetwork || toggleMutation.isPending}
+                                />
+                              </li>
+                            ))}
+                          </ul>
+                        </li>
+                      ));
+                    })()}
                   </ul>
                 )}
                 <div className="border-t border-gray-100 pt-2 mt-1">

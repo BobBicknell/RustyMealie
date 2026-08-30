@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-08-30
+
+### Added
+
+- **Shopping list categories.** Items are now grouped under their Mealie food
+  aisle/label category (e.g. "Produce", "Dairy"), with each category shown as a
+  colored header banner that stands out against the flat item list. Items
+  without a category fall into an "Other" group at the bottom, and categories
+  are hidden entirely when nothing in the list has one.
+
 ## [0.2.7] - 2026-08-30
 
 ### Added
@@ -171,7 +181,8 @@ Initial release.
 - **Android support.** Build environment and `gen/android` scaffold for
   `cargo tauri android {init,dev,build}`.
 
-[Unreleased]: https://github.com/BobBicknell/RustyMealie/compare/v0.2.7...HEAD
+[Unreleased]: https://github.com/BobBicknell/RustyMealie/compare/v0.2.8...HEAD
+[0.2.8]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.8
 [0.2.7]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.7
 [0.2.6]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.6
 [0.2.5]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.5

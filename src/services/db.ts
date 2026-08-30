@@ -44,6 +44,8 @@ export interface ShoppingListItem {
     note: string | null;
     checked: boolean;
     position: number;
+    category: string | null;
+    category_color: string | null;
 }
 
 export interface ShoppingList {

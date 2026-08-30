@@ -431,6 +431,11 @@ pub mod commands {
         pub checked: bool,
         #[serde(default)]
         pub position: i64,
+        /// The item's aisle/category label (e.g. "Produce", "Dairy"), when
+        /// the item is linked to a food that has one set in Mealie. `None`
+        /// for freeform items or foods without a label.
+        pub category: Option<String>,
+        pub category_color: Option<String>,
     }
 
     #[derive(Debug, Clone, Serialize)]
@@ -455,12 +460,15 @@ pub mod commands {
             .list_items
             .into_iter()
             .filter_map(|item| {
+                let label = item.food.as_ref().and_then(|food| food.label.as_ref());
                 Some(ShoppingListItem {
                     id: item.id?,
                     display: item.display.unwrap_or_default(),
                     note: item.note,
                     checked: item.checked,
                     position: item.position,
+                    category: label.and_then(|l| l.name.clone()),
+                    category_color: label.and_then(|l| l.color.clone()),
                 })
             })
             .collect();
@@ -686,6 +694,46 @@ pub mod commands {
             assert_eq!(list.items.len(), 2);
             assert_eq!(list.items[0].id, "a");
             assert_eq!(list.items[1].id, "b");
+        }
+
+        #[test]
+        fn parse_local_shopping_list_extracts_category_from_food_label() {
+            // Mealie carries the aisle/category label on the item's linked
+            // food, not on the item itself — the label can also be null
+            // (food exists but has no label assigned) or the item can have
+            // no food at all (a freeform note-only item).
+            let raw = r##"{
+                "id": "list-1",
+                "name": "Groceries",
+                "listItems": [
+                    {
+                        "id": "a",
+                        "display": "Milk",
+                        "checked": false,
+                        "position": 0,
+                        "food": { "label": { "id": "l1", "name": "Dairy", "color": "#4287f5" } }
+                    },
+                    {
+                        "id": "b",
+                        "display": "Batteries",
+                        "checked": false,
+                        "position": 1,
+                        "food": { "label": null }
+                    },
+                    {
+                        "id": "c",
+                        "display": "Remember to call the vet",
+                        "checked": false,
+                        "position": 2
+                    }
+                ]
+            }"##;
+
+            let list = parse_local_shopping_list("list-1", "Groceries", raw);
+            assert_eq!(list.items[0].category.as_deref(), Some("Dairy"));
+            assert_eq!(list.items[0].category_color.as_deref(), Some("#4287f5"));
+            assert_eq!(list.items[1].category, None);
+            assert_eq!(list.items[2].category, None);
         }
 
         #[test]

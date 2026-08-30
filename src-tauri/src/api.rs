@@ -45,6 +45,24 @@ struct MealiePage<T: std::fmt::Debug> {
     items: Vec<T>,
 }
 
+/// A Mealie label — used to categorize shopping list items by aisle/type
+/// (e.g. "Produce", "Dairy", "Frozen"). Carried on the item's linked
+/// `food`, not on the item itself.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct MealieLabel {
+    pub id: Option<String>,
+    pub name: Option<String>,
+    pub color: Option<String>,
+}
+
+/// The `food` object embedded in a shopping list item, when the item is
+/// linked to a recognized ingredient rather than being a freeform note.
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct MealieShoppingListItemFood {
+    #[serde(default)]
+    pub label: Option<MealieLabel>,
+}
+
 /// A single shopping-list item as served by Mealie. The summary page and
 /// the list detail both embed these (the detail embeds them under `listItems`).
 #[derive(Debug, Deserialize, Serialize)]
@@ -56,6 +74,10 @@ pub struct MealieShoppingListItem {
     pub checked: bool,
     #[serde(default)]
     pub position: i64,
+    /// Only present when the item is linked to a food (vs. a freeform
+    /// note-only item) — that's where the category label lives.
+    #[serde(default)]
+    pub food: Option<MealieShoppingListItemFood>,
 }
 
 /// A list summary row from `GET /api/households/shopping/lists`.
