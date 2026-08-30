@@ -117,7 +117,16 @@ impl MealieClient {
                 .map_err(|e| format!("Network request failed: {}", e))?;
 
             if !response.status().is_success() {
-                return Err(format!("Server returned error code: {}", response.status()));
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                return Err(format!(
+                    "Server returned error code: {status}{}",
+                    if body.trim().is_empty() {
+                        String::new()
+                    } else {
+                        format!(" — {}", body.trim())
+                    }
+                ));
             }
 
             let body = response
@@ -149,10 +158,15 @@ impl MealieClient {
             .map_err(|e| format!("Network request failed: {}", e))?;
 
         if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
             return Err(format!(
-                "Server returned error code {} for recipe '{}'",
-                response.status(),
-                slug
+                "Server returned error code {status} for recipe '{slug}'{}",
+                if body.trim().is_empty() {
+                    String::new()
+                } else {
+                    format!(" — {}", body.trim())
+                }
             ));
         }
 
@@ -181,10 +195,15 @@ impl MealieClient {
             .map_err(|e| format!("Network request failed: {}", e))?;
 
         if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
             return Err(format!(
-                "Server returned error code {} for image '{}'",
-                response.status(),
-                file_name
+                "Server returned error code {status} for image '{file_name}'{}",
+                if body.trim().is_empty() {
+                    String::new()
+                } else {
+                    format!(" — {}", body.trim())
+                }
             ));
         }
 

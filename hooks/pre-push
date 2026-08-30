@@ -1,6 +1,6 @@
 #!/bin/sh
-# pre-push hook: run `cargo audit` and block the push if any known
-# vulnerabilities are found in the Rust dependency tree.
+# pre-push hook: run Rust (`cargo audit`) and frontend (`npm audit`,
+# `typecheck`, `lint`) checks and block the push if any fail.
 #
 # Enable with:  git config core.hooksPath hooks
 
@@ -18,5 +18,40 @@ if cargo audit; then
 else
     status=$?
     echo "cargo audit: VULNERABILITIES FOUND - push aborted." >&2
+    exit "$status"
+fi
+
+if ! command -v npm >/dev/null 2>&1; then
+    echo "npm not installed; skipping frontend checks" >&2
+    exit 0
+fi
+
+echo "Running npm audit before push..."
+
+if npm audit; then
+    echo "npm audit: no vulnerabilities found."
+else
+    status=$?
+    echo "npm audit: VULNERABILITIES FOUND - push aborted." >&2
+    exit "$status"
+fi
+
+echo "Running TypeScript typecheck before push..."
+
+if npm run typecheck; then
+    echo "typecheck: no type errors."
+else
+    status=$?
+    echo "typecheck: TYPE ERRORS FOUND - push aborted." >&2
+    exit "$status"
+fi
+
+echo "Running oxlint before push..."
+
+if npm run lint; then
+    echo "lint: no lint errors."
+else
+    status=$?
+    echo "lint: LINT ERRORS FOUND - push aborted." >&2
     exit "$status"
 fi

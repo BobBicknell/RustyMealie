@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-08-30
+
+### Added
+
+- **Pre-push checks for the frontend.** The git pre-push hook now also runs
+  `npm audit`, the TypeScript typecheck (`tsc --noEmit`), and the new `oxlint`
+  linter on the React codebase, in addition to `cargo audit` on the Rust side.
+
+### Changed
+
+- **More helpful error messages.** When the Mealie server returns an error,
+  the response body is now included alongside the HTTP status code, making sync
+  and API failures far easier to diagnose.
+
 ## [0.2.6] - 2026-08-29
 
 ### Fixed
@@ -157,7 +171,8 @@ Initial release.
 - **Android support.** Build environment and `gen/android` scaffold for
   `cargo tauri android {init,dev,build}`.
 
-[Unreleased]: https://github.com/BobBicknell/RustyMealie/compare/v0.2.6...HEAD
+[Unreleased]: https://github.com/BobBicknell/RustyMealie/compare/v0.2.7...HEAD
+[0.2.7]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.7
 [0.2.6]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.6
 [0.2.5]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.5
 [0.2.4]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.4
