@@ -1,0 +1,22 @@
+#!/bin/sh
+# pre-push hook: run `cargo audit` and block the push if any known
+# vulnerabilities are found in the Rust dependency tree.
+#
+# Enable with:  git config core.hooksPath hooks
+
+set -e
+
+if ! command -v cargo-audit >/dev/null 2>&1; then
+    echo "cargo-audit not installed (cargo install cargo-audit); skipping audit" >&2
+    exit 0
+fi
+
+echo "Running cargo audit before push..."
+
+if cargo audit; then
+    echo "cargo audit: no vulnerabilities found."
+else
+    status=$?
+    echo "cargo audit: VULNERABILITIES FOUND - push aborted." >&2
+    exit "$status"
+fi
