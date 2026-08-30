@@ -95,27 +95,31 @@ fn add_column_if_missing(
     Ok(())
 }
 
+/// Fields for `upsert_recipe_summary`, grouped into one struct instead of
+/// nine positional arguments so call sites read like `RecipeSummary` does
+/// rather than needing a look at the signature to know what each value
+/// means.
+pub struct RecipeRow<'a> {
+    pub id: &'a str,
+    pub name: &'a str,
+    pub slug: Option<&'a str>,
+    pub description: Option<&'a str>,
+    /// Server-side image filename (e.g. `original.webp`) needed to
+    /// download the thumbnail later.
+    pub remote_image: Option<&'a str>,
+    pub raw_json: &'a str,
+    pub tags: &'a [String],
+    pub categories: &'a [String],
+    pub synced_at: i64,
+}
+
 /// Upsert a recipe's metadata (used during the metadata-list sync pull).
-/// `remote_image` is the server-side image filename (e.g. `original.webp`)
-/// needed to download the thumbnail later. Does not touch
-/// `marked_offline` — that flag is only changed via `set_offline_available`,
-/// so a routine metadata sync never silently un-marks a recipe the user
-/// flagged for offline use.
-#[allow(clippy::too_many_arguments)]
-pub fn upsert_recipe_summary(
-    conn: &Connection,
-    id: &str,
-    name: &str,
-    slug: Option<&str>,
-    description: Option<&str>,
-    remote_image: Option<&str>,
-    raw_json: &str,
-    tags: &[String],
-    categories: &[String],
-    synced_at: i64,
-) -> SqlResult<()> {
-    let tags_joined = tags.join(",");
-    let categories_joined = categories.join(",");
+/// Does not touch `marked_offline` — that flag is only changed via
+/// `set_offline_available`, so a routine metadata sync never silently
+/// un-marks a recipe the user flagged for offline use.
+pub fn upsert_recipe_summary(conn: &Connection, row: RecipeRow) -> SqlResult<()> {
+    let tags_joined = row.tags.join(",");
+    let categories_joined = row.categories.join(",");
     conn.execute(
         r#"
         INSERT INTO recipes (id, name, slug, description, remote_image, raw_json, tags, categories, last_synced_at)
@@ -132,15 +136,15 @@ pub fn upsert_recipe_summary(
             last_synced_at = excluded.last_synced_at
         "#,
         params![
-            id,
-            name,
-            slug,
-            description,
-            remote_image,
-            raw_json,
+            row.id,
+            row.name,
+            row.slug,
+            row.description,
+            row.remote_image,
+            row.raw_json,
             tags_joined,
             categories_joined,
-            synced_at
+            row.synced_at
         ],
     )?;
     Ok(())
@@ -472,15 +476,17 @@ mod tests {
         let conn = test_conn();
         upsert_recipe_summary(
             &conn,
-            "r1",
-            "Pasta Carbonara",
-            Some("pasta-carbonara"),
-            Some("Classic Roman pasta"),
-            Some("original.webp"),
-            r#"{"id":"r1"}"#,
-            &["italian".to_string(), "pasta".to_string()],
-            &["main".to_string()],
-            1000,
+            RecipeRow {
+                id: "r1",
+                name: "Pasta Carbonara",
+                slug: Some("pasta-carbonara"),
+                description: Some("Classic Roman pasta"),
+                remote_image: Some("original.webp"),
+                raw_json: r#"{"id":"r1"}"#,
+                tags: &["italian".to_string(), "pasta".to_string()],
+                categories: &["main".to_string()],
+                synced_at: 1000,
+            },
         )
         .unwrap();
 
@@ -503,41 +509,47 @@ mod tests {
         let conn = test_conn();
         upsert_recipe_summary(
             &conn,
-            "r1",
-            "Pasta Carbonara",
-            Some("pasta-carbonara"),
-            None,
-            None,
-            "{}",
-            &["italian".into()],
-            &["main".into()],
-            1000,
+            RecipeRow {
+                id: "r1",
+                name: "Pasta Carbonara",
+                slug: Some("pasta-carbonara"),
+                description: None,
+                remote_image: None,
+                raw_json: "{}",
+                tags: &["italian".into()],
+                categories: &["main".into()],
+                synced_at: 1000,
+            },
         )
         .unwrap();
         upsert_recipe_summary(
             &conn,
-            "r2",
-            "Chicken Curry",
-            Some("chicken-curry"),
-            None,
-            None,
-            "{}",
-            &["indian".into()],
-            &["main".into()],
-            1000,
+            RecipeRow {
+                id: "r2",
+                name: "Chicken Curry",
+                slug: Some("chicken-curry"),
+                description: None,
+                remote_image: None,
+                raw_json: "{}",
+                tags: &["indian".into()],
+                categories: &["main".into()],
+                synced_at: 1000,
+            },
         )
         .unwrap();
         upsert_recipe_summary(
             &conn,
-            "r3",
-            "Caesar Salad",
-            Some("caesar-salad"),
-            None,
-            None,
-            "{}",
-            &[],
-            &["side".into()],
-            1000,
+            RecipeRow {
+                id: "r3",
+                name: "Caesar Salad",
+                slug: Some("caesar-salad"),
+                description: None,
+                remote_image: None,
+                raw_json: "{}",
+                tags: &[],
+                categories: &["side".into()],
+                synced_at: 1000,
+            },
         )
         .unwrap();
 
@@ -565,15 +577,17 @@ mod tests {
         let conn = test_conn();
         upsert_recipe_summary(
             &conn,
-            "r1",
-            "Pasta Carbonara",
-            Some("pasta-carbonara"),
-            None,
-            None,
-            "{}",
-            &[],
-            &[],
-            1000,
+            RecipeRow {
+                id: "r1",
+                name: "Pasta Carbonara",
+                slug: Some("pasta-carbonara"),
+                description: None,
+                remote_image: None,
+                raw_json: "{}",
+                tags: &[],
+                categories: &[],
+                synced_at: 1000,
+            },
         )
         .unwrap();
 
@@ -585,15 +599,17 @@ mod tests {
         // A routine metadata re-sync (no image_path) must not clear the flag.
         upsert_recipe_summary(
             &conn,
-            "r1",
-            "Pasta Carbonara",
-            Some("pasta-carbonara"),
-            None,
-            None,
-            "{}",
-            &[],
-            &[],
-            2000,
+            RecipeRow {
+                id: "r1",
+                name: "Pasta Carbonara",
+                slug: Some("pasta-carbonara"),
+                description: None,
+                remote_image: None,
+                raw_json: "{}",
+                tags: &[],
+                categories: &[],
+                synced_at: 2000,
+            },
         )
         .unwrap();
         let all = get_recipe_summaries(&conn, None, None, None).unwrap();
@@ -608,28 +624,32 @@ mod tests {
         let conn = test_conn();
         upsert_recipe_summary(
             &conn,
-            "r1",
-            "A",
-            Some("a"),
-            None,
-            Some("original.webp"),
-            "{}",
-            &[],
-            &[],
-            1000,
+            RecipeRow {
+                id: "r1",
+                name: "A",
+                slug: Some("a"),
+                description: None,
+                remote_image: Some("original.webp"),
+                raw_json: "{}",
+                tags: &[],
+                categories: &[],
+                synced_at: 1000,
+            },
         )
         .unwrap();
         upsert_recipe_summary(
             &conn,
-            "r2",
-            "B",
-            Some("b"),
-            None,
-            None,
-            "{}",
-            &[],
-            &[],
-            1000,
+            RecipeRow {
+                id: "r2",
+                name: "B",
+                slug: Some("b"),
+                description: None,
+                remote_image: None,
+                raw_json: "{}",
+                tags: &[],
+                categories: &[],
+                synced_at: 1000,
+            },
         )
         .unwrap();
         set_offline_available(&conn, "r2", true, None).unwrap();
@@ -650,15 +670,17 @@ mod tests {
         let conn = test_conn();
         upsert_recipe_summary(
             &conn,
-            "r1",
-            "A",
-            Some("a"),
-            None,
-            Some("original.webp"),
-            "{}",
-            &[],
-            &[],
-            1000,
+            RecipeRow {
+                id: "r1",
+                name: "A",
+                slug: Some("a"),
+                description: None,
+                remote_image: Some("original.webp"),
+                raw_json: "{}",
+                tags: &[],
+                categories: &[],
+                synced_at: 1000,
+            },
         )
         .unwrap();
         set_offline_available(&conn, "r1", true, None).unwrap();
@@ -684,28 +706,32 @@ mod tests {
         let conn = test_conn();
         upsert_recipe_summary(
             &conn,
-            "r1",
-            "A",
-            Some("a"),
-            None,
-            Some("original.webp"),
-            "{}",
-            &[],
-            &[],
-            1000,
+            RecipeRow {
+                id: "r1",
+                name: "A",
+                slug: Some("a"),
+                description: None,
+                remote_image: Some("original.webp"),
+                raw_json: "{}",
+                tags: &[],
+                categories: &[],
+                synced_at: 1000,
+            },
         )
         .unwrap();
         upsert_recipe_summary(
             &conn,
-            "r2",
-            "B",
-            Some("b"),
-            None,
-            Some("original.webp"),
-            "{}",
-            &[],
-            &[],
-            1000,
+            RecipeRow {
+                id: "r2",
+                name: "B",
+                slug: Some("b"),
+                description: None,
+                remote_image: Some("original.webp"),
+                raw_json: "{}",
+                tags: &[],
+                categories: &[],
+                synced_at: 1000,
+            },
         )
         .unwrap();
         set_recipe_image(&conn, "r2", "/images/r2.webp").unwrap();

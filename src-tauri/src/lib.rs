@@ -161,6 +161,46 @@ pub mod commands {
         std::fs::write(&path, bytes).map_err(|_| ())?;
         Ok(path.to_string_lossy().into_owned())
     }
+    /// Result of one thumbnail-download task: the recipe id it was
+    /// downloading for, and the downloaded bytes or an error message.
+    type ImageDownloadHandle = tokio::task::JoinHandle<(String, Result<Vec<u8>, String>)>;
+
+    /// Await a batch of in-flight thumbnail-download tasks, writing each
+    /// successful download to disk and recording its path in the cache,
+    /// emitting sync progress after every task. Used for both the
+    /// full-size batches drained mid-loop and the trailing partial batch
+    /// after it, so that logic only exists once.
+    async fn drain_image_batch(
+        app: &tauri::AppHandle,
+        state: &tauri::State<'_, AppState>,
+        batch: Vec<ImageDownloadHandle>,
+        processed_images: &mut usize,
+        images_total: usize,
+    ) -> usize {
+        let mut downloaded = 0usize;
+        for handle in batch {
+            *processed_images += 1;
+            if let Ok((id, Ok(bytes))) = handle.await {
+                if let Ok(path) =
+                    write_image_file(&state.images_dir, &id, "min-original.webp", &bytes)
+                {
+                    if let Ok(conn) = state.db.lock() {
+                        if db::set_recipe_image(&conn, &id, &path).is_ok() {
+                            downloaded += 1;
+                        }
+                    }
+                }
+            }
+            emit_progress(
+                app,
+                "images",
+                *processed_images,
+                images_total,
+                &format!("Downloading thumbnail {processed_images} of {images_total}…"),
+            );
+        }
+        downloaded
+    }
 
     #[tauri::command]
     pub async fn trigger_sync(
@@ -189,15 +229,17 @@ pub mod commands {
                 };
                 db::upsert_recipe_summary(
                     &tx,
-                    id,
-                    name,
-                    summary.slug.as_deref(),
-                    summary.description.as_deref(),
-                    summary.image.as_deref(),
-                    "{}",
-                    &summary.tag_names(),
-                    &summary.category_names(),
-                    timestamp,
+                    db::RecipeRow {
+                        id,
+                        name,
+                        slug: summary.slug.as_deref(),
+                        description: summary.description.as_deref(),
+                        remote_image: summary.image.as_deref(),
+                        raw_json: "{}",
+                        tags: &summary.tag_names(),
+                        categories: &summary.category_names(),
+                        synced_at: timestamp,
+                    },
                 )
                 .map_err(|e| e.to_string())?;
                 // Emit roughly every 10 recipes (plus the first/last) so the
@@ -254,50 +296,14 @@ pub mod commands {
                 (task_id, result)
             }));
             if batch.len() >= 4 {
-                for handle in batch.drain(..) {
-                    processed_images += 1;
-                    if let Ok((id, Ok(bytes))) = handle.await {
-                        if let Ok(path) =
-                            write_image_file(&state.images_dir, &id, "min-original.webp", &bytes)
-                        {
-                            if let Ok(conn) = state.db.lock() {
-                                if db::set_recipe_image(&conn, &id, &path).is_ok() {
-                                    images_downloaded += 1;
-                                }
-                            }
-                        }
-                    }
-                    emit_progress(
-                        &app,
-                        "images",
-                        processed_images,
-                        images_total,
-                        &format!("Downloading thumbnail {processed_images} of {images_total}…"),
-                    );
-                }
+                let ready = std::mem::take(&mut batch);
+                images_downloaded +=
+                    drain_image_batch(&app, &state, ready, &mut processed_images, images_total)
+                        .await;
             }
         }
-        for handle in batch {
-            processed_images += 1;
-            if let Ok((id, Ok(bytes))) = handle.await {
-                if let Ok(path) =
-                    write_image_file(&state.images_dir, &id, "min-original.webp", &bytes)
-                {
-                    if let Ok(conn) = state.db.lock() {
-                        if db::set_recipe_image(&conn, &id, &path).is_ok() {
-                            images_downloaded += 1;
-                        }
-                    }
-                }
-            }
-            emit_progress(
-                &app,
-                "images",
-                processed_images,
-                images_total,
-                &format!("Downloading thumbnail {processed_images} of {images_total}…"),
-            );
-        }
+        images_downloaded +=
+            drain_image_batch(&app, &state, batch, &mut processed_images, images_total).await;
         if images_total > 0 {
             emit_progress(
                 &app,
@@ -657,6 +663,73 @@ pub mod commands {
             .map_err(|e| e.to_string())?;
 
         Ok(parse_local_shopping_list(&list_id, &name, &raw))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn parse_local_shopping_list_returns_items_sorted_by_position() {
+            let raw = r#"{
+                "id": "list-1",
+                "name": "Groceries",
+                "listItems": [
+                    { "id": "b", "display": "Bread", "checked": false, "position": 1 },
+                    { "id": "a", "display": "Apples", "checked": false, "position": 0 }
+                ]
+            }"#;
+
+            let list = parse_local_shopping_list("list-1", "Groceries", raw);
+            assert_eq!(list.id, "list-1");
+            assert_eq!(list.name, "Groceries");
+            assert_eq!(list.items.len(), 2);
+            assert_eq!(list.items[0].id, "a");
+            assert_eq!(list.items[1].id, "b");
+        }
+
+        #[test]
+        fn parse_local_shopping_list_falls_back_to_empty_list_on_malformed_json() {
+            // A cached row could be corrupted (partial write, schema drift,
+            // etc.) — the fallback must yield an empty-but-valid list using
+            // the caller's id/name rather than propagating a parse error
+            // and taking the whole shopping screen down with it.
+            let list = parse_local_shopping_list("list-1", "Groceries", "not valid json");
+            assert_eq!(list.id, "list-1");
+            assert_eq!(list.name, "Groceries");
+            assert!(list.items.is_empty());
+        }
+
+        #[test]
+        fn parse_local_shopping_list_falls_back_on_wrong_json_shape() {
+            // Valid JSON that doesn't match `MealieShoppingList`'s shape
+            // (e.g. a stray `"{}"` placeholder, or a totally unrelated
+            // payload) should hit the same empty-list fallback rather than
+            // panicking or silently returning garbage fields.
+            let list = parse_local_shopping_list("list-1", "Groceries", "{}");
+            assert_eq!(list.id, "list-1");
+            assert_eq!(list.name, "Groceries");
+            assert!(list.items.is_empty());
+        }
+
+        #[test]
+        fn parse_local_shopping_list_skips_items_missing_an_id() {
+            // Mealie item shapes always carry an id in practice, but the
+            // filter_map guard exists specifically to drop any that don't
+            // rather than fabricating one — worth pinning down explicitly.
+            let raw = r#"{
+                "id": "list-1",
+                "name": "Groceries",
+                "listItems": [
+                    { "display": "No id here", "checked": false, "position": 0 },
+                    { "id": "b", "display": "Bread", "checked": false, "position": 1 }
+                ]
+            }"#;
+
+            let list = parse_local_shopping_list("list-1", "Groceries", raw);
+            assert_eq!(list.items.len(), 1);
+            assert_eq!(list.items[0].id, "b");
+        }
     }
 }
 
