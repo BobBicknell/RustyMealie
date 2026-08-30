@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-08-29
+
+### Fixed
+
+- **Faster, smoother sync.** Recipe metadata writes are batched into a single
+  database transaction instead of one transaction per recipe, and sync progress
+  now updates every 10 recipes rather than only at the start and end.
+- **Vite dev-server vulnerability.** Bumped Vite to 6.4.3 to resolve
+  Dependabot-flagged dev-server path-traversal advisories (GHSA-4w7w-66w2-5vf9
+  and a related esbuild advisory); `npm audit` now reports 0 vulnerabilities.
+
 ## [0.2.5] - 2026-08-29
 
 ### Security
@@ -146,7 +157,8 @@ Initial release.
 - **Android support.** Build environment and `gen/android` scaffold for
   `cargo tauri android {init,dev,build}`.
 
-[Unreleased]: https://github.com/BobBicknell/RustyMealie/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/BobBicknell/RustyMealie/compare/v0.2.6...HEAD
+[0.2.6]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.6
 [0.2.5]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.5
 [0.2.4]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.4
 [0.2.3]: https://github.com/BobBicknell/RustyMealie/releases/tag/v0.2.3
